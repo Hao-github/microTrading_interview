@@ -1,16 +1,16 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 
 @dataclass
 class TickRecord:
     symbol: str = ""
     trading_day: str = ""
-    time_value: str = ""
+    timestamp: int = 0
     price: float = 0.0
-    volume: float = 0.0
-    extra: dict[str, Any] = field(default_factory=dict)
+    volume: int = 0
+    turnover: int = 0
+    recv_index: int = 0
 
 
 @dataclass
