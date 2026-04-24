@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from src.kline.aggregator import KlineAggregator
 from src.kline.checkpoint import CheckpointManager
 from src.kline.config_loader import ConfigLoader
@@ -11,7 +9,7 @@ from src.kline.writer import KlineWriter
 
 def build_pipeline(config_path: str = "config.ini") -> dict:
     """Create project components and return them as a simple container."""
-    config_loader = ConfigLoader(Path(config_path))
+    config_loader = ConfigLoader(config_path)
     reader = CSVReader()
     preprocessor = TickPreprocessor()
     aggregator = KlineAggregator()

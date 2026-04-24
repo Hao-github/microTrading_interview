@@ -4,6 +4,8 @@ __pycache__/
 .venv/
 env/
 venv/
+.vscode/
+
 
 data/output/*
 !data/output/.gitkeep
