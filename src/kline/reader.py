@@ -1,6 +1,5 @@
 import csv
 import logging
-from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
@@ -48,17 +47,14 @@ class CSVReader:
             recv_index_idx = index_map["recv_index"]
             for row_number, row in enumerate(reader, start=2):
                 try:
-                    record = TickRecord(
+                    record = TickRecord.from_csv_fields(
                         symbol=row[symbol_idx].strip(),
                         trading_day=row[trading_day_idx].strip(),
-                        timestamp=self._to_timestamp(
-                            row[trading_day_idx].strip(),
-                            row[time_value_idx].strip(),
-                        ),
-                        price=self._to_float(row[price_idx].strip()),
-                        volume=self._to_int(row[volume_idx].strip()),
-                        turnover=self._to_int(row[turnover_idx].strip()),
-                        recv_index=self._to_int(row[recv_index_idx].strip()),
+                        time_value=row[time_value_idx].strip(),
+                        price=row[price_idx].strip(),
+                        volume=row[volume_idx].strip(),
+                        turnover=row[turnover_idx].strip(),
+                        recv_index=row[recv_index_idx].strip(),
                     )
                 except (IndexError, ValueError) as exc:
                     self.logger.warning(
@@ -72,17 +68,3 @@ class CSVReader:
         self.logger.info(
             f"finished reading csv file: {file_path}, valid rows={row_count}"
         )
-
-    def _to_float(self, value: str) -> float:
-        """Convert a string to float."""
-        return float(value) if value else 0.0
-
-    def _to_int(self, value: str) -> int:
-        """Convert a string to float."""
-        return int(value) if value else 0
-
-    def _to_timestamp(self, trading_day: str, time_value: str) -> int:
-        """Convert trading day and HHMMSSmmm time into a millisecond timestamp."""
-        time_value = time_value.zfill(9)
-        dt = datetime.strptime(f"{trading_day}{time_value}", "%Y%m%d%H%M%S%f")
-        return int(dt.timestamp() * 1000)

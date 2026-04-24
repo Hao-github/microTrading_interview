@@ -13,6 +13,20 @@ class SymbolAggregationState:
     flushed_until: int = -1
 
 
+@dataclass
+class IntervalAggregationState:
+    interval: str
+    interval_ms: int
+    symbol_states: dict[str, SymbolAggregationState] = field(default_factory=dict)
+    aggregated_bars: list[KlineBar] = field(default_factory=list)
+
+    @classmethod
+    def from_interval(cls, interval: str) -> "IntervalAggregationState":
+        if interval.endswith("m") and (minutes := int(interval[:-1])) > 0:
+            return cls(interval=interval, interval_ms=minutes * 60 * 1000)
+        raise ValueError(f"unsupported interval: {interval}")
+
+
 class KlineAggregator:
     def __init__(
         self,
@@ -30,39 +44,28 @@ class KlineAggregator:
     def aggregate_many(
         self, rows: Iterable[TickRecord], intervals: list[str]
     ) -> dict[str, list[KlineBar]]:
-        interval_ms_map = {
-            interval: self._interval_to_milliseconds(interval) for interval in intervals
-        }
         interval_states = {
-            interval: {} for interval in intervals
-        }
-        aggregated_bars: dict[str, list[KlineBar]] = {
-            interval: [] for interval in intervals
+            interval: IntervalAggregationState.from_interval(interval)
+            for interval in intervals
         }
 
         for row in rows:
             for interval in intervals:
-                bars = self._process_row_for_interval(
+                interval_state = interval_states[interval]
+                self._process_row_for_interval(
                     row=row,
-                    interval=interval,
-                    interval_ms=interval_ms_map[interval],
-                    symbol_states=interval_states[interval],
+                    interval_state=interval_state,
                 )
-                aggregated_bars[interval].extend(bars)
 
-        for interval in intervals:
-            aggregated_bars[interval].extend(
-                self._flush_remaining_bars(interval_states[interval])
+        for interval_state in interval_states.values():
+            interval_state.aggregated_bars.extend(
+                self._flush_remaining_bars(interval_state.symbol_states)
             )
 
-        return aggregated_bars
-
-    def _interval_to_milliseconds(self, interval: str) -> int:
-        if interval.endswith("m"):
-            minutes = int(interval[:-1])
-            if minutes > 0:
-                return minutes * 60 * 1000
-        raise ValueError(f"unsupported interval: {interval}")
+        return {
+            interval: interval_state.aggregated_bars
+            for interval, interval_state in interval_states.items()
+        }
 
     def _bucket_start(self, timestamp: int, interval_ms: int) -> int:
         return timestamp - (timestamp % interval_ms)
@@ -70,61 +73,72 @@ class KlineAggregator:
     def _process_row_for_interval(
         self,
         row: TickRecord,
-        interval: str,
-        interval_ms: int,
-        symbol_states: dict[str, SymbolAggregationState],
-    ) -> list[KlineBar]:
-        symbol = row.symbol
-        state = symbol_states.get(symbol)
-        if state is None:
+        interval_state: IntervalAggregationState,
+    ) -> None:
+        if (state := interval_state.symbol_states.get(row.symbol)) is None:
             state = SymbolAggregationState(watermark=row.timestamp)
-            symbol_states[symbol] = state
+            interval_state.symbol_states[row.symbol] = state
+        self._update_watermark(row, state)
 
-        previous_watermark = state.watermark
-
-        if row.timestamp < previous_watermark:
-            self.logger.warning(
-                f"Out-of-order tick for {symbol}: "
-                f"recv_index={row.recv_index}, "
-                f"timestamp={row.timestamp}, "
-                f"watermark={previous_watermark}"
-            )
-
-        watermark = max(previous_watermark, row.timestamp)
-        state.watermark = watermark
-
-        bucket_start = self._bucket_start(row.timestamp, interval_ms)
-        bucket_end = bucket_start + interval_ms
+        bucket_start = self._bucket_start(row.timestamp, interval_state.interval_ms)
+        bucket_end = bucket_start + interval_state.interval_ms
         if bucket_end <= state.flushed_until:
             self.logger.warning(
                 f"Drop late tick for flushed bucket: "
-                f"symbol={symbol}, "
+                f"symbol={row.symbol}, "
                 f"recv_index={row.recv_index}, "
                 f"timestamp={row.timestamp}, "
-                f"interval={interval}"
+                f"interval={interval_state.interval}"
             )
-            return []
+            return
 
-        bar = state.active_bars.get(bucket_start)
-        if bar is None:
+        if (bar := state.active_bars.get(bucket_start)) is None:
             state.active_bars[bucket_start] = self._new_bar(
                 row=row,
-                interval=interval,
+                interval=interval_state.interval,
                 bucket_start=bucket_start,
                 bucket_end=bucket_end,
             )
         else:
-            self._update_bar(bar, row)
+            bar.update_from_tick(row)
 
-        flush_before = watermark - self.max_lateness_ms
+        interval_state.aggregated_bars.extend(
+            self._flush_ready_bars(state, interval_state)
+        )
+
+    def _update_watermark(
+        self,
+        row: TickRecord,
+        state: SymbolAggregationState,
+    ) -> None:
+        previous_watermark = state.watermark
+        if row.timestamp < previous_watermark:
+            self.logger.warning(
+                f"Out-of-order tick for {row.symbol}: "
+                f"recv_index={row.recv_index}, "
+                f"timestamp={row.timestamp}, "
+                f"watermark={previous_watermark}"
+            )
+        state.watermark = max(previous_watermark, row.timestamp)
+
+    def _flush_ready_bars(
+        self,
+        state: SymbolAggregationState,
+        interval_state: IntervalAggregationState,
+    ) -> list[KlineBar]:
+        flush_before = state.watermark - self.max_lateness_ms
         flushable_starts = [
-            start for start in state.active_bars if start + interval_ms <= flush_before
+            start
+            for start in state.active_bars
+            if start + interval_state.interval_ms <= flush_before
         ]
 
         flushed_bars: list[KlineBar] = []
         for start in sorted(flushable_starts):
             bar_to_flush = state.active_bars.pop(start)
-            state.flushed_until = max(state.flushed_until, start + interval_ms)
+            state.flushed_until = max(
+                state.flushed_until, start + interval_state.interval_ms
+            )
             flushed_bars.append(bar_to_flush)
         return flushed_bars
 
@@ -158,13 +172,6 @@ class KlineAggregator:
             start_time=self._format_timestamp(bucket_start),
             end_time=self._format_timestamp(bucket_end),
         )
-
-    def _update_bar(self, bar: KlineBar, row: TickRecord) -> None:
-        bar.high_price = max(bar.high_price, row.price)
-        bar.low_price = min(bar.low_price, row.price)
-        bar.close_price = row.price
-        bar.volume += float(row.volume)
-        bar.amount += float(row.turnover)
 
     def _format_timestamp(self, timestamp: int) -> str:
         return datetime.fromtimestamp(timestamp / 1000).strftime("%H:%M:%S")
