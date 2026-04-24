@@ -33,12 +33,8 @@ def main() -> None:
     config = pipeline["config_loader"].load()
     reader = pipeline["reader"]
 
-    csv_files = sorted(Path(config.input_dir).glob("*.csv"))
-    if not csv_files:
-        print("No CSV files found.")
-        return
 
-    for row in islice(reader.read(csv_files[0]), 10):
+    for row in islice(reader.read("data/input/md_20221110_head_1000000.csv"), 10):
         print(row)
 
 

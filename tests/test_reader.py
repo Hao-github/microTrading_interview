@@ -1,15 +1,12 @@
 from itertools import islice
 from pathlib import Path
 
-from kline.reader import CSVReader
+from src.kline.reader import CSVReader
 
 
-def test_csv_reader_reads_millionth_row_from_large_csv(monkeypatch) -> None:
+def test_csv_reader_reads_millionth_row_from_large_csv() -> None:
     reader = CSVReader()
     file_path = Path("data/input/md_20221110.csv")
-
-    # Silence the debug print in CSVReader so the test can scan efficiently.
-    monkeypatch.setattr("builtins.print", lambda *args, **kwargs: None)
 
     millionth_row = next(islice(reader.read(file_path), 999999, None))
 
