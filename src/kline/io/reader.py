@@ -2,16 +2,17 @@ import csv
 from pathlib import Path
 from typing import Iterator
 
-from src.kline.core.models import TaskConfig
-from ..core.models import TickRecord
-from ..runtime.logger import get_logger
+from kline.core import TaskConfig, TickRecord
+from kline.runtime.logger import get_logger
 
 
 class CSVReader:
     def __init__(self, config: TaskConfig) -> None:
         self.logger = get_logger("kline.reader", config.log_dir)
 
-    def read(self, file_path: str | Path) -> Iterator[TickRecord]:
+    def read(
+        self, file_path: str | Path, start_offset: int | None = None
+    ) -> Iterator[TickRecord]:
         """Yield tick records from a CSV file."""
         file_path = Path(file_path)
         self.logger.info("start reading csv file: %s", file_path)
@@ -48,6 +49,10 @@ class CSVReader:
             recv_index_idx = index_map["recv_index"]
             for row_number, row in enumerate(reader, start=2):
                 try:
+                    recv_index = int(row[recv_index_idx].strip() or 0)
+                    if start_offset is not None and recv_index < start_offset:
+                        continue
+
                     record = TickRecord.from_csv_fields(
                         symbol=row[symbol_idx].strip(),
                         trading_day=row[trading_day_idx].strip(),
@@ -55,7 +60,7 @@ class CSVReader:
                         price=row[price_idx].strip(),
                         volume=row[volume_idx].strip(),
                         turnover=row[turnover_idx].strip(),
-                        recv_index=row[recv_index_idx].strip(),
+                        recv_index=recv_index,
                     )
                 except (IndexError, ValueError) as exc:
                     self.logger.warning(

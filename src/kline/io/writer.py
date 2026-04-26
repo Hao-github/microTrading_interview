@@ -3,11 +3,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Iterator
 
-from ..core.models import KlineBar, TaskConfig
-from ..runtime.logger import get_logger
+from kline.core import KlineBar, TaskConfig
+from kline.runtime import get_logger
 
 
-@dataclass
+@dataclass(slots=True)
 class IntervalWriterState:
     output_path: Path
     csv_file: IO[str]
@@ -17,7 +17,6 @@ class IntervalWriterState:
     @classmethod
     def for_interval(
         cls,
-        *,
         interval: str,
         output_dir: Path,
         original_file_name: str,
@@ -41,10 +40,7 @@ class KlineWriter:
         self.config = config
         self.logger = get_logger("kline.writer", config.log_dir)
 
-    def write_stream(
-        self,
-        rows: Iterator[tuple[str, KlineBar]],
-    ) -> None:
+    def write_stream(self, rows: Iterator[tuple[str, KlineBar]]) -> None:
         output_format = self.config.output_format
         if output_format != "csv":
             if output_format == "parquet":

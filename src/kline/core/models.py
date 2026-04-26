@@ -1,9 +1,39 @@
-from dataclasses import asdict, dataclass, field, fields
-from datetime import datetime
+from dataclasses import dataclass, field, fields
+from datetime import date
 from pathlib import Path
 
+_EPOCH_ORDINAL = date(1970, 1, 1).toordinal()
+_CHINA_TZ_OFFSET_SECONDS = 8 * 60 * 60
 
-@dataclass
+
+def _parse_timestamp_ms(trading_day: str, time_value: str) -> int:
+    if len(trading_day) != 8 or not trading_day.isdigit():
+        raise ValueError(f"invalid trading_day: {trading_day}")
+
+    time_text = time_value.zfill(9)
+    if len(time_text) != 9 or not time_text.isdigit():
+        raise ValueError(f"invalid time_value: {time_value}")
+
+    epoch_day = (
+        date(
+            int(trading_day[0:4]),
+            int(trading_day[4:6]),
+            int(trading_day[6:8]),
+        ).toordinal()
+        - _EPOCH_ORDINAL
+    )
+
+    total_seconds = (
+        epoch_day * 24 * 60 * 60
+        + int(time_text[0:2]) * 60 * 60
+        + int(time_text[2:4]) * 60
+        + int(time_text[4:6])
+        - _CHINA_TZ_OFFSET_SECONDS
+    )
+    return total_seconds * 1000 + int(time_text[6:9])
+
+
+@dataclass(slots=True)
 class TickRecord:
     symbol: str = ""
     trading_day: str = ""
@@ -23,21 +53,20 @@ class TickRecord:
         price: str,
         volume: str,
         turnover: str,
-        recv_index: str,
+        recv_index: int,
     ) -> "TickRecord":
-        dt = datetime.strptime(f"{trading_day}{time_value.zfill(9)}", "%Y%m%d%H%M%S%f")
         return cls(
             symbol=symbol,
             trading_day=trading_day,
-            timestamp=int(dt.timestamp() * 1000),
+            timestamp=_parse_timestamp_ms(trading_day, time_value),
             price=float(price) if price else 0.0,
             volume=int(volume) if volume else 0,
             turnover=int(turnover) if turnover else 0,
-            recv_index=int(recv_index) if recv_index else 0,
+            recv_index=recv_index,
         )
 
 
-@dataclass
+@dataclass(slots=True)
 class KlineBar:
     symbol: str = ""
     interval: str = ""
@@ -60,7 +89,6 @@ class KlineBar:
     @classmethod
     def from_tick(
         cls,
-        *,
         row: TickRecord,
         interval: str,
         timestamp_bucket: tuple[int, int],
@@ -96,10 +124,42 @@ class KlineBar:
         self.amount += float(row.turnover)
 
     def to_csv_row(self) -> dict[str, str | int | float]:
-        return asdict(self)
+        return {
+            "symbol": self.symbol,
+            "interval": self.interval,
+            "trading_day": self.trading_day,
+            "open_price": self.open_price,
+            "high_price": self.high_price,
+            "low_price": self.low_price,
+            "close_price": self.close_price,
+            "volume": self.volume,
+            "amount": self.amount,
+            "bucket_start_timestamp": self.bucket_start_timestamp,
+            "bucket_end_timestamp": self.bucket_end_timestamp,
+            "first_tick_timestamp": self.first_tick_timestamp,
+            "last_tick_timestamp": self.last_tick_timestamp,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, str | int | float]) -> "KlineBar":
+        return cls(
+            symbol=str(payload["symbol"]),
+            interval=str(payload["interval"]),
+            trading_day=str(payload["trading_day"]),
+            open_price=float(payload["open_price"]),
+            high_price=float(payload["high_price"]),
+            low_price=float(payload["low_price"]),
+            close_price=float(payload["close_price"]),
+            volume=float(payload["volume"]),
+            amount=float(payload["amount"]),
+            bucket_start_timestamp=int(payload["bucket_start_timestamp"]),
+            bucket_end_timestamp=int(payload["bucket_end_timestamp"]),
+            first_tick_timestamp=int(payload["first_tick_timestamp"]),
+            last_tick_timestamp=int(payload["last_tick_timestamp"]),
+        )
 
 
-@dataclass
+@dataclass(slots=True)
 class TaskConfig:
     input_file_path: Path = Path("data/input/md_20221110.csv")
     output_dir: Path = Path("data/output")
@@ -107,3 +167,4 @@ class TaskConfig:
     checkpoint_dir: Path = Path("checkpoints")
     intervals: list[str] = field(default_factory=lambda: ["1m", "5m", "10m", "30m"])
     output_format: str = "csv"
+    checkpoint_interval: int = 1000000

@@ -10,8 +10,7 @@ pipeline:
 - aggregate bars by symbol and interval
 - tolerate limited out-of-order events with a watermark window
 - stream aggregated bars into per-interval CSV files
-
-Checkpoint persistence is reserved for a later iteration and is not implemented yet.
+- persist checkpoint snapshots for resumable processing
 
 ## Structure
 
@@ -37,10 +36,12 @@ checkpoint_dir = checkpoints
 [runtime]
 intervals = 1m,5m,10m,30m
 output_format = csv
+checkpoint_interval = 1000000
 ```
 
 `log_dir` is used by the reader, aggregator, and writer loggers, so logs now follow
 the configured output directory instead of always writing to the default `logs/`.
+`checkpoint_interval = 0` disables checkpoint writes.
 
 ## Run
 
@@ -50,6 +51,8 @@ python main.py
 
 The program reads `input_file_path` from `config.ini`, aggregates all configured
 intervals, and writes one CSV file per interval into `output_dir`.
+If a checkpoint exists, processing resumes from the next unread `recv_index`.
+After a successful run, the latest checkpoint file is cleared.
 
 ## Development
 
@@ -67,5 +70,5 @@ python -m pytest
 
 ## Status
 
-- Implemented: CSV ingestion, interval aggregation, streaming CSV output, config-based logging
-- Not implemented yet: checkpoint load/save/resume, parquet output
+- Implemented: CSV ingestion, interval aggregation, streaming CSV output, config-based logging, checkpoint save/resume
+- Not implemented yet: parquet output

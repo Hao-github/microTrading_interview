@@ -1,7 +1,7 @@
 from configparser import ConfigParser
 from pathlib import Path
 
-from ..core.models import TaskConfig
+from kline.core import TaskConfig
 
 SUPPORTED_OUTPUT_FORMATS = {"csv", "parquet"}
 SUPPORTED_INTERVAL_UNITS = ("m", "min", "h", "s")
@@ -44,6 +44,10 @@ class ConfigLoader:
                 ]
             if runtime.get("output_format"):
                 config.output_format = runtime["output_format"].strip().lower()
+            if runtime.get("checkpoint_interval"):
+                config.checkpoint_interval = self._parse_checkpoint_interval(
+                    runtime["checkpoint_interval"]
+                )
 
         self.validate(config)
         return config
@@ -68,6 +72,9 @@ class ConfigLoader:
                 f"Supported: {sorted(SUPPORTED_OUTPUT_FORMATS)}"
             )
 
+        if config.checkpoint_interval < 0:
+            raise ValueError("runtime.checkpoint_interval must be >= 0")
+
         config.output_dir.mkdir(parents=True, exist_ok=True)
         config.log_dir.mkdir(parents=True, exist_ok=True)
         config.checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -81,3 +88,22 @@ class ConfigLoader:
 
         number = interval[:-1]
         return number.isdigit() and int(number) > 0
+
+    @staticmethod
+    def _parse_checkpoint_interval(value: str) -> int:
+        normalized = value.strip().lower()
+        if not normalized:
+            return 0
+
+        if normalized.endswith("w"):
+            number = normalized[:-1]
+            if number.isdigit():
+                return int(number) * 10_000
+
+        if normalized.isdigit():
+            return int(normalized)
+
+        raise ValueError(
+            "Invalid checkpoint_interval. Use a non-negative integer or values "
+            "like 100w."
+        )
