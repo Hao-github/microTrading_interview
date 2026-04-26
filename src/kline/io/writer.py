@@ -1,5 +1,4 @@
 import csv
-import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Iterator
@@ -38,13 +37,9 @@ class IntervalWriterState:
 
 
 class KlineWriter:
-    def __init__(
-        self,
-        config: TaskConfig,
-        logger: logging.Logger | None = None,
-    ) -> None:
+    def __init__(self, config: TaskConfig) -> None:
         self.config = config
-        self.logger = logger or get_logger("kline.writer")
+        self.logger = get_logger("kline.writer", config.log_dir)
 
     def write_stream(
         self,

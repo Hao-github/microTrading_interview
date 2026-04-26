@@ -1,15 +1,15 @@
 import csv
-import logging
 from pathlib import Path
 from typing import Iterator
 
+from src.kline.core.models import TaskConfig
 from ..core.models import TickRecord
 from ..runtime.logger import get_logger
 
 
 class CSVReader:
-    def __init__(self, logger: logging.Logger | None = None) -> None:
-        self.logger = logger or get_logger("kline.reader")
+    def __init__(self, config: TaskConfig) -> None:
+        self.logger = get_logger("kline.reader", config.log_dir)
 
     def read(self, file_path: str | Path) -> Iterator[TickRecord]:
         """Yield tick records from a CSV file."""

@@ -1,7 +1,7 @@
-import logging
 from dataclasses import dataclass, field
 from typing import Iterable, Iterator
 
+from src.kline.core.models import TaskConfig
 from ..runtime.logger import get_logger
 from .models import KlineBar, TickRecord
 
@@ -76,13 +76,9 @@ class IntervalAggregationState:
 
 
 class KlineAggregator:
-    def __init__(
-        self,
-        max_lateness_ms: int = 30_000,
-        logger: logging.Logger | None = None,
-    ) -> None:
+    def __init__(self, config: TaskConfig, max_lateness_ms: int = 30_000) -> None:
         self.max_lateness_ms = max_lateness_ms
-        self.logger = logger or get_logger("kline.aggregator")
+        self.logger = get_logger("kline.aggregator", config.log_dir)
 
     def aggregate(
         self, rows: Iterable[TickRecord], intervals: str | list[str]

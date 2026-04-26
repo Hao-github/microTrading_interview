@@ -1,5 +1,4 @@
-from src.kline import ConfigLoader, CSVReader, KlineAggregator, KlineWriter
-from src.kline.runtime import get_logger
+from kline import ConfigLoader, CSVReader, KlineAggregator, KlineWriter
 
 
 def main() -> None:
@@ -7,11 +6,9 @@ def main() -> None:
     config_loader = ConfigLoader()
     config = config_loader.load()
 
-    reader = CSVReader(logger=get_logger("kline.reader", config.log_dir))
-    aggregator = KlineAggregator(
-        logger=get_logger("kline.aggregator", config.log_dir)
-    )
-    writer = KlineWriter(config, logger=get_logger("kline.writer", config.log_dir))
+    reader = CSVReader(config)
+    aggregator = KlineAggregator(config)
+    writer = KlineWriter(config)
 
     ticks = reader.read(config.input_file_path)
     bars = aggregator.aggregate(ticks, config.intervals)
