@@ -1,11 +1,21 @@
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 .pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 .venv/
 env/
 venv/
 .vscode/
 *.ipynb
+dist/
+build/
+*.egg-info/
 
 data/input/
 data/sample_input/*

@@ -12,7 +12,6 @@ class ConfigLoader:
     def load(
         self,
         config_path: str | Path = "config.ini",
-        input_file_path: str | Path | None = None,
     ) -> TaskConfig:
         """Load config values and override the default TaskConfig fields."""
         self.parser.clear()
@@ -22,7 +21,12 @@ class ConfigLoader:
 
         if self.parser.has_section("paths"):
             paths = self.parser["paths"]
-            for field_name in ("output_dir", "log_dir", "checkpoint_dir"):
+            for field_name in (
+                "input_file_path",
+                "output_dir",
+                "log_dir",
+                "checkpoint_dir",
+            ):
                 if paths.get(field_name):
                     setattr(config, field_name, Path(paths[field_name]))
 
@@ -36,8 +40,5 @@ class ConfigLoader:
                 ]
             if runtime.get("output_format"):
                 config.output_format = runtime["output_format"]
-
-        if input_file_path is not None:
-            config.input_file_path = Path(input_file_path)
 
         return config

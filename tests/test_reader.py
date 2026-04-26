@@ -1,20 +1,30 @@
-from itertools import islice
-
 from kline import CSVReader
 
 
-def test_csv_reader_reads_millionth_row_from_large_csv() -> None:
-    reader = CSVReader()
-    millionth_row = next(
-        islice(
-            reader.read("data/sample_input/md_20221110_head_1000000.csv"), 999999, None
-        )
+def test_csv_reader_reads_expected_rows_from_csv(tmp_path) -> None:
+    sample_file = tmp_path / "sample_ticks.csv"
+    sample_file.write_text(
+        "\n".join(
+            [
+                "szWindCode,nTradingDay,nTime,nMatch,iVolume,iTurnover,recv_index",
+                "000001.SZ,20221110,93000000,10.5,100,1050,1",
+                "000002.SZ,20221110,93001000,20.0,200,4000,2",
+            ]
+        ),
+        encoding="utf-8",
     )
 
-    assert millionth_row.symbol == "000581.SZ"
-    assert millionth_row.trading_day == "20221110"
-    assert millionth_row.timestamp == 1668044103000
-    assert millionth_row.price == 176300.0
-    assert millionth_row.volume == 198600
-    assert millionth_row.turnover == 3506263
-    assert millionth_row.recv_index == 999999
+    reader = CSVReader()
+    rows = list(reader.read(sample_file))
+
+    assert len(rows) == 2
+    assert rows[0].symbol == "000001.SZ"
+    assert rows[0].trading_day == "20221110"
+    assert rows[0].timestamp == 1668043800000
+    assert rows[0].price == 10.5
+    assert rows[0].volume == 100
+    assert rows[0].turnover == 1050
+    assert rows[0].recv_index == 1
+
+    assert rows[1].symbol == "000002.SZ"
+    assert rows[1].timestamp == 1668043801000

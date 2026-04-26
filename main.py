@@ -1,15 +1,17 @@
 from src.kline import ConfigLoader, CSVReader, KlineAggregator, KlineWriter
+from src.kline.runtime import get_logger
 
 
 def main() -> None:
     """CLI entry point."""
     config_loader = ConfigLoader()
-    config = config_loader.load(
-        input_file_path="data/sample_input/md_20221110_head_1000000.csv"
+    config = config_loader.load()
+
+    reader = CSVReader(logger=get_logger("kline.reader", config.log_dir))
+    aggregator = KlineAggregator(
+        logger=get_logger("kline.aggregator", config.log_dir)
     )
-    reader = CSVReader()
-    aggregator = KlineAggregator()
-    writer = KlineWriter(config)
+    writer = KlineWriter(config, logger=get_logger("kline.writer", config.log_dir))
 
     ticks = reader.read(config.input_file_path)
     bars = aggregator.aggregate(ticks, config.intervals)
