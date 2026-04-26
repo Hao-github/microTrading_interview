@@ -13,14 +13,13 @@ def build_pipeline(config_path: str = "config.ini") -> dict:
     """Create project components and return them as a simple container."""
     config_loader = ConfigLoader()
     reader = CSVReader()
-    # aggregator = KlineAggregator()
+    aggregator = KlineAggregator()
     # writer = KlineWriter()
     # checkpoint_manager = CheckpointManager()
     # logger = get_logger("kline")
     return {
         "config_loader": config_loader,
         "config_path": config_path,
-        "input_file_path": "data/input/md_20221110_head_1000000.csv",
         "reader": reader,
         # "aggregator": aggregator,
         # "writer": writer,

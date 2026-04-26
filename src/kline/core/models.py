@@ -48,8 +48,10 @@ class KlineBar:
     close_price: float = 0.0
     volume: float = 0.0
     amount: float = 0.0
-    start_timestamp: int = 0
-    end_timestamp: int = 0
+    bucket_start_timestamp: int = 0
+    bucket_end_timestamp: int = 0
+    first_tick_timestamp: int = 0
+    last_tick_timestamp: int = 0
 
     @classmethod
     def from_tick(
@@ -57,8 +59,8 @@ class KlineBar:
         *,
         row: TickRecord,
         interval: str,
-        start_timestamp: int,
-        end_timestamp: int,
+        bucket_start_timestamp: int,
+        bucket_end_timestamp: int,
     ) -> "KlineBar":
         return cls(
             symbol=row.symbol,
@@ -70,14 +72,23 @@ class KlineBar:
             close_price=row.price,
             volume=float(row.volume),
             amount=float(row.turnover),
-            start_timestamp=start_timestamp,
-            end_timestamp=end_timestamp,
+            bucket_start_timestamp=bucket_start_timestamp,
+            bucket_end_timestamp=bucket_end_timestamp,
+            first_tick_timestamp=row.timestamp,
+            last_tick_timestamp=row.timestamp,
         )
 
     def update_from_tick(self, row: TickRecord) -> None:
+        if row.timestamp < self.first_tick_timestamp:
+            self.open_price = row.price
+            self.first_tick_timestamp = row.timestamp
+
+        if row.timestamp >= self.last_tick_timestamp:
+            self.close_price = row.price
+            self.last_tick_timestamp = row.timestamp
+
         self.high_price = max(self.high_price, row.price)
         self.low_price = min(self.low_price, row.price)
-        self.close_price = row.price
         self.volume += float(row.volume)
         self.amount += float(row.turnover)
 

@@ -97,8 +97,8 @@ class KlineAggregator:
             state.active_bars[bucket_start] = KlineBar.from_tick(
                 row=row,
                 interval=interval_state.interval,
-                start_timestamp=bucket_start,
-                end_timestamp=bucket_end,
+                bucket_start_timestamp=bucket_start,
+                bucket_end_timestamp=bucket_end,
             )
         else:
             bar.update_from_tick(row)
@@ -125,13 +125,13 @@ class KlineAggregator:
         flushable_starts = [
             start
             for start, bar in state.active_bars.items()
-            if bar.end_timestamp <= flush_before
+            if bar.bucket_end_timestamp <= flush_before
         ]
 
         flushed_bars: list[KlineBar] = []
         for start in sorted(flushable_starts):
             bar_to_flush = state.active_bars.pop(start)
-            state.flushed_until = max(state.flushed_until, bar_to_flush.end_timestamp)
+            state.flushed_until = max(state.flushed_until, bar_to_flush.bucket_end_timestamp)
             flushed_bars.append(bar_to_flush)
         return flushed_bars
 

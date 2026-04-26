@@ -1,61 +1,53 @@
-from kline import KlineAggregator, TickRecord
+from kline import CSVReader, KlineAggregator, KlineBar
+
+SAMPLE_CSV_PATH = "tests/sample_ticks_100.csv"
 
 
-def test_aggregator_builds_1m_bars() -> None:
-    aggregator = KlineAggregator(max_lateness_ms=0)
-    rows = [
-        TickRecord(
-            symbol="000001.SZ",
-            trading_day="20221110",
-            timestamp=1668043801000,
-            price=10.0,
-            volume=100,
-            turnover=1000,
-            recv_index=1,
-        ),
-        TickRecord(
-            symbol="000001.SZ",
-            trading_day="20221110",
-            timestamp=1668043815000,
-            price=11.0,
-            volume=50,
-            turnover=550,
-            recv_index=2,
-        ),
-        TickRecord(
-            symbol="000001.SZ",
-            trading_day="20221110",
-            timestamp=1668043865000,
-            price=9.0,
-            volume=30,
-            turnover=270,
-            recv_index=3,
-        ),
-    ]
+def _aggregate_1m_bars() -> dict[tuple[str, int], KlineBar]:
+    reader = CSVReader()
+    aggregator = KlineAggregator(max_lateness_ms=30_000)
+    rows = reader.read(SAMPLE_CSV_PATH)
+    bars = aggregator.aggregate(rows, "1m")
+    return {(bar.symbol, bar.bucket_start_timestamp): bar for bar in bars}
 
-    bars = list(aggregator.aggregate(rows, "1m"))
 
-    assert len(bars) == 2
+def test_aggregator_builds_expected_bars_from_sample_csv() -> None:
+    reader = CSVReader()
+    aggregator = KlineAggregator(max_lateness_ms=30_000)
+    rows = reader.read(SAMPLE_CSV_PATH)
+    bars = aggregator.aggregate(rows, "1m")
+    bars = _aggregate_1m_bars()
 
-    first_bar = bars[0]
-    assert first_bar.symbol == "000001.SZ"
+    assert len(bars) == 15
+
+    first_bar = bars[("000001.SZ", 1668043800000)]
     assert first_bar.interval == "1m"
     assert first_bar.trading_day == "20221110"
     assert first_bar.open_price == 10.0
-    assert first_bar.high_price == 11.0
+    assert first_bar.high_price == 12.0
     assert first_bar.low_price == 10.0
     assert first_bar.close_price == 11.0
-    assert first_bar.volume == 150.0
-    assert first_bar.amount == 1550.0
-    assert first_bar.start_timestamp == 1668043800000
-    assert first_bar.end_timestamp == 1668043860000
+    assert first_bar.volume == 220.0
+    assert first_bar.amount == 2370.0
+    assert first_bar.bucket_end_timestamp == 1668043860000
 
-    second_bar = bars[1]
-    assert second_bar.open_price == 9.0
-    assert second_bar.high_price == 9.0
-    assert second_bar.low_price == 9.0
-    assert second_bar.close_price == 9.0
-    assert second_bar.volume == 30.0
-    assert second_bar.amount == 270.0
-    assert second_bar.start_timestamp == 1668043860000
-    assert second_bar.end_timestamp == 1668043920000
+    dense_bar = bars[("300001.SZ", 1668043800000)]
+    assert dense_bar.open_price == 200.0
+    assert dense_bar.high_price == 209.0
+    assert dense_bar.low_price == 200.0
+    assert dense_bar.close_price == 209.0
+    assert dense_bar.volume == 100.0
+    assert dense_bar.amount == 20450.0
+    assert dense_bar.bucket_end_timestamp == 1668043860000
+
+
+def test_aggregator_tolerates_small_out_of_order_ticks_within_same_bar() -> None:
+    bars = _aggregate_1m_bars()
+
+    bar = bars[("601399.SH", 1668044040000)]
+    assert bar.open_price == 102.0
+    assert bar.close_price == 104.0
+    assert bar.high_price == 104.0
+    assert bar.low_price == 102.0
+    assert bar.volume == 230.0
+    assert bar.amount == 23720.0
