@@ -1,17 +1,15 @@
-from kline import CSVReader, KlineAggregator, KlineBar
+from kline import CSVReader, KlineAggregator, KlineBar, ConfigLoader
 
 SAMPLE_CSV_PATH = "tests/sample_ticks_100.csv"
 
 
 def _aggregate_1m_bars() -> dict[tuple[str, int], KlineBar]:
-    reader = CSVReader()
-    aggregator = KlineAggregator(max_lateness_ms=30_000)
+    config = ConfigLoader().load()
+    reader = CSVReader(config)
+    aggregator = KlineAggregator(max_lateness_ms=30_000, config=config)
     rows = reader.read(SAMPLE_CSV_PATH)
     bars = aggregator.aggregate(rows, "1m")
-    return {
-        (bar.symbol, bar.bucket_start_timestamp): bar
-        for _, bar in bars
-    }
+    return {(bar.symbol, bar.bucket_start_timestamp): bar for _, bar in bars}
 
 
 def test_aggregator_builds_expected_bars_from_sample_csv() -> None:
