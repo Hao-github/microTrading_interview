@@ -25,19 +25,32 @@ class CSVColumnIndexes:
         }
 
 
-class CSVReader:
-    def __init__(self, config: TaskConfig) -> None:
-        self.logger = get_logger("kline.reader", config.log_dir)
-        self._active_rows: Generator[TickRecord, None, None] | None = None
+class CSVTickStream:
+    def __init__(
+        self,
+        reader: "CSVReader",
+        rows: Generator[TickRecord, None, None],
+    ) -> None:
+        self._reader = reader
+        self._rows = rows
 
-    def __enter__(self) -> "CSVReader":
-        return self
+    def __enter__(self) -> Generator[TickRecord, None, None]:
+        return self._rows
 
     def __exit__(self, exc_type, exc, tb) -> None:
         self.close()
 
-    def __del__(self) -> None:
-        self.close()
+    def __iter__(self) -> Generator[TickRecord, None, None]:
+        return self._rows
+
+    def close(self) -> None:
+        self._reader.close()
+
+
+class CSVReader:
+    def __init__(self, config: TaskConfig) -> None:
+        self.logger = get_logger("kline.reader", config.log_dir)
+        self._active_rows: Generator[TickRecord, None, None] | None = None
 
     def close(self) -> None:
         if self._active_rows is None:
@@ -97,7 +110,7 @@ class CSVReader:
 
     def read(
         self, file_path: str | Path, start_offset: int | None = None
-    ) -> Generator[TickRecord, None, None]:
+    ) -> CSVTickStream:
         """Yield tick records from a CSV file."""
         self.close()
         file_path = Path(file_path)
@@ -135,4 +148,4 @@ class CSVReader:
 
         rows = _iter_rows()
         self._active_rows = rows
-        return rows
+        return CSVTickStream(self, rows)

@@ -140,6 +140,23 @@ class KlineBar:
             "last_tick_timestamp": self.last_tick_timestamp,
         }
 
+    def to_csv_values(self) -> list[str | int | float]:
+        return [
+            self.symbol,
+            self.interval,
+            self.trading_day,
+            self.open_price,
+            self.high_price,
+            self.low_price,
+            self.close_price,
+            self.volume,
+            self.amount,
+            self.bucket_start_timestamp,
+            self.bucket_end_timestamp,
+            self.first_tick_timestamp,
+            self.last_tick_timestamp,
+        ]
+
     @classmethod
     def from_dict(cls, payload: dict[str, str | int | float]) -> "KlineBar":
         return cls(

@@ -1,6 +1,5 @@
 from kline.core import KlineAggregator
-from kline.core.models import TaskConfig, TickRecord
-from kline.core.state import IntervalStates
+from kline.core.models import TaskConfig
 from kline.io import CSVReader, KlineWriter
 from kline.runtime.checkpoint import CheckpointManager
 from kline.runtime.logger import get_logger
@@ -11,83 +10,65 @@ class AggregationRunner:
         self,
         config: TaskConfig,
         reader: CSVReader,
-        aggregator: KlineAggregator,
         writer: KlineWriter,
         checkpoint_manager: CheckpointManager,
     ) -> None:
         self.config = config
         self.reader = reader
-        self.aggregator = aggregator
-        self.writer = writer
         self.checkpoint_manager = checkpoint_manager
+        self.writer = writer
         self.logger = get_logger("kline.runner", config.log_dir)
+        self.start_offset, self.initial_states, self.commit_id = (
+            self.checkpoint_manager.restore_latest()
+        )
+        self.aggregator = KlineAggregator(
+            config=config, initial_states=self.initial_states
+        )
 
     def run(self) -> None:
-        start_offset, initial_states = self.checkpoint_manager.restore_latest()
-        self.aggregator.interval_states = initial_states
+        self.writer.cleanup_outputs_after(self.commit_id)
         last_processed_offset: int | None = None
+        processed_count = 0
 
-        with self.reader:
-            rows = self.reader.read(
-                self.config.input_file_path, start_offset=start_offset
-            )
-            batch: list[TickRecord] = []
+        try:
+            with self.reader.read(
+                self.config.input_file_path, start_offset=self.start_offset
+            ) as rows:
 
-            for row in rows:
-                batch.append(row)
-                last_processed_offset = row.recv_index
-                if self._should_commit_batch(len(batch)):
-                    self._commit_batch(batch, last_processed_offset)
-                    batch = []
+                def rows_with_checkpoints():
+                    nonlocal last_processed_offset, processed_count
 
-            if batch and last_processed_offset is not None:
-                self._commit_batch(batch, last_processed_offset)
+                    for row in rows:
+                        last_processed_offset = row.recv_index
+                        processed_count += 1
+                        yield row
 
-        final_batch_end_offset = self._final_batch_end_offset(
-            last_processed_offset=last_processed_offset,
-            start_offset=start_offset,
-            initial_states=initial_states,
-        )
-        final_rows = list(self.aggregator.aggregate((), self.config.intervals))
-        if final_rows and final_batch_end_offset is not None:
-            self.writer.write_batch(
-                final_rows, final_batch_end_offset, segment_kind="final"
-            )
+                        interval = self.config.checkpoint_interval
+                        if interval > 0 and processed_count % interval == 0:
+                            self.commit_id += 1
+                            written_paths = self.writer.commit_segment(self.commit_id)
+                            self.checkpoint_manager.save_snapshot(
+                                offset=row.recv_index,
+                                interval_states=self.aggregator.interval_states,
+                                commit_id=self.commit_id,
+                            )
+                            self.logger.info(
+                                "committed checkpoint commit_id=%s, offset=%s, segment_files=%s",
+                                self.commit_id,
+                                row.recv_index,
+                                len(written_paths),
+                            )
 
-        self.checkpoint_manager.clear_all()
+                for interval, bar in self.aggregator.aggregate(
+                    rows_with_checkpoints(), self.config.intervals
+                ):
+                    self.writer.segment_state_for(interval).write_bar(bar)
+
+            if self.writer.has_open_segment():
+                self.commit_id += 1
+                self.writer.commit_segment(self.commit_id, segment_kind="final")
+            self.checkpoint_manager.clear_all()
+        except Exception:
+            self.writer.discard_open_segment()
+            raise
         self.logger.info("aggregation pipeline completed successfully")
-
-    def _should_commit_batch(self, batch_size: int) -> bool:
-        interval = self.config.checkpoint_interval
-        return interval > 0 and batch_size >= interval
-
-    def _commit_batch(self, batch: list[TickRecord], batch_end_offset: int) -> None:
-        batch_rows = list(
-            self.aggregator.aggregate(batch, self.config.intervals, finalize=False)
-        )
-        self.writer.write_batch(batch_rows, batch_end_offset)
-        self.checkpoint_manager.save_snapshot(
-            offset=batch_end_offset,
-            interval_states=self.aggregator.interval_states,
-        )
-        self.logger.info(
-            "committed batch ending at offset %s, input_rows=%s, output_rows=%s",
-            batch_end_offset,
-            len(batch),
-            len(batch_rows),
-        )
-
-    @staticmethod
-    def _final_batch_end_offset(
-        *,
-        last_processed_offset: int | None,
-        start_offset: int | None,
-        initial_states: IntervalStates,
-    ) -> int | None:
-        if last_processed_offset is not None:
-            return last_processed_offset
-        if start_offset is not None and start_offset > 0:
-            return start_offset - 1
-        if initial_states.by_interval:
-            return 0
-        return None

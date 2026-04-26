@@ -3,7 +3,7 @@ from pathlib import Path
 
 from kline.core.models import TaskConfig
 
-SUPPORTED_OUTPUT_FORMATS = {"csv", "parquet"}
+SUPPORTED_OUTPUT_FORMATS = {"csv"}
 SUPPORTED_INTERVAL_UNITS = ("m", "min", "h", "s")
 
 

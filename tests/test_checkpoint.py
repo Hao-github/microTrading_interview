@@ -3,6 +3,7 @@ import shutil
 import uuid
 from pathlib import Path
 
+from kline import ConfigLoader
 from kline.core import (
     IntervalAggregationState,
     IntervalStates,
@@ -41,33 +42,41 @@ def _make_temp_checkpoint_dir() -> Path:
     return checkpoint_dir
 
 
+def _make_manager(checkpoint_dir: Path) -> CheckpointManager:
+    config = ConfigLoader().load()
+    config.checkpoint_dir = checkpoint_dir
+    return CheckpointManager(config)
+
+
 def test_checkpoint_restore_latest_returns_none_when_directory_is_empty() -> None:
     checkpoint_dir = _make_temp_checkpoint_dir()
-    manager = CheckpointManager(checkpoint_dir)
+    manager = _make_manager(checkpoint_dir)
 
     try:
-        start_offset, interval_states = manager.restore_latest()
+        start_offset, interval_states, commit_id = manager.restore_latest()
 
         assert start_offset is None
         assert interval_states.by_interval == {}
+        assert commit_id == 0
     finally:
         shutil.rmtree(checkpoint_dir, ignore_errors=True)
 
 
 def test_checkpoint_save_and_restore_round_trip_state() -> None:
     checkpoint_dir = _make_temp_checkpoint_dir()
-    manager = CheckpointManager(checkpoint_dir)
+    manager = _make_manager(checkpoint_dir)
     interval_states = _build_interval_states()
 
     try:
         checkpoint_path = manager.save_snapshot(
-            offset=42, interval_states=interval_states
+            offset=42, interval_states=interval_states, commit_id=3
         )
-        start_offset, restored_states = manager.restore_latest()
+        start_offset, restored_states, commit_id = manager.restore_latest()
 
-        assert checkpoint_path.name == "checkpoint_00000000000000000042.json"
+        assert checkpoint_path.name == "checkpoint_00000000000000000003.json"
         assert checkpoint_path.exists()
         assert start_offset == 43
+        assert commit_id == 3
         assert restored_states is not None
 
         restored_interval_state = restored_states["1m"]
@@ -86,24 +95,27 @@ def test_checkpoint_save_and_restore_round_trip_state() -> None:
         payload = json.loads(checkpoint_path.read_text(encoding="utf-8"))
         assert payload["version"] == 1
         assert payload["offset"] == 42
+        assert payload["commit_id"] == 3
     finally:
         shutil.rmtree(checkpoint_dir, ignore_errors=True)
 
 
-def test_checkpoint_clear_latest_removes_only_newest_snapshot() -> None:
+def test_checkpoint_clear_all_removes_all_snapshots() -> None:
     checkpoint_dir = _make_temp_checkpoint_dir()
-    manager = CheckpointManager(checkpoint_dir)
+    manager = _make_manager(checkpoint_dir)
     interval_states = _build_interval_states()
 
     try:
-        older_path = manager.save_snapshot(offset=10, interval_states=interval_states)
-        latest_path = manager.save_snapshot(offset=20, interval_states=interval_states)
+        older_path = manager.save_snapshot(
+            offset=10, interval_states=interval_states, commit_id=1
+        )
+        latest_path = manager.save_snapshot(
+            offset=20, interval_states=interval_states, commit_id=2
+        )
 
-        manager.clear_latest()
-        start_offset, _ = manager.restore_latest()
+        manager.clear_all()
 
-        assert older_path.exists()
+        assert not older_path.exists()
         assert not latest_path.exists()
-        assert start_offset == 11
     finally:
         shutil.rmtree(checkpoint_dir, ignore_errors=True)

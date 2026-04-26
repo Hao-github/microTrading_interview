@@ -3,7 +3,6 @@ from kline import (
     CheckpointManager,
     ConfigLoader,
     CSVReader,
-    KlineAggregator,
     KlineWriter,
 )
 
@@ -16,7 +15,6 @@ def main() -> None:
     runner = AggregationRunner(
         config=config,
         reader=CSVReader(config),
-        aggregator=KlineAggregator(config),
         writer=KlineWriter(config),
         checkpoint_manager=CheckpointManager(config),
     )
