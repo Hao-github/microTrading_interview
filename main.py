@@ -1,44 +1,19 @@
-from itertools import islice
-
-from src.kline import (
-    CSVReader,
-    CheckpointManager,
-    ConfigLoader,
-    KlineAggregator,
-    KlineWriter,
-)
-
-
-def build_pipeline(config_path: str = "config.ini") -> dict:
-    """Create project components and return them as a simple container."""
-    config_loader = ConfigLoader()
-    reader = CSVReader()
-    aggregator = KlineAggregator()
-    # writer = KlineWriter()
-    # checkpoint_manager = CheckpointManager()
-    # logger = get_logger("kline")
-    return {
-        "config_loader": config_loader,
-        "config_path": config_path,
-        "reader": reader,
-        # "aggregator": aggregator,
-        # "writer": writer,
-        # "checkpoint_manager": checkpoint_manager,
-        # "logger": logger,
-    }
+from src.kline import ConfigLoader, CSVReader, KlineAggregator, KlineWriter
 
 
 def main() -> None:
     """CLI entry point."""
-    pipeline = build_pipeline()
-    config = pipeline["config_loader"].load(
-        pipeline["config_path"],
-        input_file_path=pipeline["input_file_path"],
+    config_loader = ConfigLoader()
+    config = config_loader.load(
+        input_file_path="data/sample_input/md_20221110_head_1000000.csv"
     )
-    reader = pipeline["reader"]
+    reader = CSVReader()
+    aggregator = KlineAggregator()
+    writer = KlineWriter(config)
 
-    for row in islice(reader.read(config.input_file_path), 10):
-        print(row)
+    ticks = reader.read(config.input_file_path)
+    bars = aggregator.aggregate(ticks, config.intervals)
+    writer.write_stream(bars)
 
 
 if __name__ == "__main__":

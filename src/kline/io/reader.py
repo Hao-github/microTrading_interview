@@ -4,11 +4,12 @@ from pathlib import Path
 from typing import Iterator
 
 from ..core.models import TickRecord
+from ..runtime.logger import get_logger
 
 
 class CSVReader:
     def __init__(self, logger: logging.Logger | None = None) -> None:
-        self.logger = logger or logging.getLogger("kline.reader")
+        self.logger = logger or get_logger("kline.reader")
 
     def read(self, file_path: str | Path) -> Iterator[TickRecord]:
         """Yield tick records from a CSV file."""

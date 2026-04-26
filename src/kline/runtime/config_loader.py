@@ -9,7 +9,11 @@ class ConfigLoader:
         """Initialize the parser used for loading task config files."""
         self.parser = ConfigParser()
 
-    def load(self, config_path: str | Path = "config.ini") -> TaskConfig:
+    def load(
+        self,
+        config_path: str | Path = "config.ini",
+        input_file_path: str | Path | None = None,
+    ) -> TaskConfig:
         """Load config values and override the default TaskConfig fields."""
         self.parser.clear()
         self.parser.read(Path(config_path), encoding="utf-8")
@@ -32,5 +36,8 @@ class ConfigLoader:
                 ]
             if runtime.get("output_format"):
                 config.output_format = runtime["output_format"]
+
+        if input_file_path is not None:
+            config.input_file_path = Path(input_file_path)
 
         return config

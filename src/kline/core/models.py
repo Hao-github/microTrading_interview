@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime
 from pathlib import Path
 
@@ -54,13 +54,16 @@ class KlineBar:
     last_tick_timestamp: int = 0
 
     @classmethod
+    def csv_fieldnames(cls) -> list[str]:
+        return [field.name for field in fields(cls)]
+
+    @classmethod
     def from_tick(
         cls,
         *,
         row: TickRecord,
         interval: str,
-        bucket_start_timestamp: int,
-        bucket_end_timestamp: int,
+        timestamp_bucket: tuple[int, int],
     ) -> "KlineBar":
         return cls(
             symbol=row.symbol,
@@ -72,8 +75,8 @@ class KlineBar:
             close_price=row.price,
             volume=float(row.volume),
             amount=float(row.turnover),
-            bucket_start_timestamp=bucket_start_timestamp,
-            bucket_end_timestamp=bucket_end_timestamp,
+            bucket_start_timestamp=timestamp_bucket[0],
+            bucket_end_timestamp=timestamp_bucket[1],
             first_tick_timestamp=row.timestamp,
             last_tick_timestamp=row.timestamp,
         )
@@ -92,9 +95,13 @@ class KlineBar:
         self.volume += float(row.volume)
         self.amount += float(row.turnover)
 
+    def to_csv_row(self) -> dict[str, str | int | float]:
+        return asdict(self)
+
 
 @dataclass
 class TaskConfig:
+    input_file_path: Path = Path("data/input/md_20221110.csv")
     output_dir: Path = Path("data/output")
     log_dir: Path = Path("logs")
     checkpoint_dir: Path = Path("checkpoints")
