@@ -1,12 +1,10 @@
 from typing import Iterable, Iterator
 
-from kline.core import (
+from kline.core.models import KlineBar, TaskConfig, TickRecord
+from kline.core.state import (
     IntervalAggregationState,
     IntervalStates,
-    KlineBar,
     SymbolAggregationState,
-    TaskConfig,
-    TickRecord,
 )
 from kline.runtime.logger import get_logger
 

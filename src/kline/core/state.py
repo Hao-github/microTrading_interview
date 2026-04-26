@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from kline.core import KlineBar, TickRecord
+from kline.core.models import KlineBar, TickRecord
 
 
 @dataclass(slots=True)

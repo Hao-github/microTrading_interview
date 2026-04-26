@@ -1,7 +1,7 @@
 from configparser import ConfigParser
 from pathlib import Path
 
-from kline.core import TaskConfig
+from kline.core.models import TaskConfig
 
 SUPPORTED_OUTPUT_FORMATS = {"csv", "parquet"}
 SUPPORTED_INTERVAL_UNITS = ("m", "min", "h", "s")

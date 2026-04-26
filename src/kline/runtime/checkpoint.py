@@ -1,14 +1,15 @@
 import json
 from pathlib import Path
 
-from kline.core import IntervalStates
+from kline.core.models import TaskConfig
+from kline.core.state import IntervalStates
 
 
 class CheckpointManager:
     def __init__(
-        self, checkpoint_dir: str | Path, file_prefix: str = "checkpoint"
+        self, config: TaskConfig, file_prefix: str = "checkpoint"
     ) -> None:
-        self.checkpoint_dir = Path(checkpoint_dir)
+        self.checkpoint_dir = config.checkpoint_dir
         self.file_prefix = file_prefix
 
     def restore_latest(
@@ -43,6 +44,13 @@ class CheckpointManager:
 
     def clear_latest(self) -> None:
         if (checkpoint_path := self._latest_checkpoint_path()) is not None:
+            checkpoint_path.unlink()
+
+    def clear_all(self) -> None:
+        if not self.checkpoint_dir.exists():
+            return
+
+        for checkpoint_path in self.checkpoint_dir.glob(f"{self.file_prefix}_*.json"):
             checkpoint_path.unlink()
 
     def _latest_checkpoint_path(self) -> Path | None:
