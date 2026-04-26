@@ -8,6 +8,8 @@ venv/
 *.ipynb
 
 data/input/
+data/sample_input/*
+!data/sample_input/.gitkeep
 
 data/output/*
 !data/output/.gitkeep

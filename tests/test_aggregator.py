@@ -1,5 +1,4 @@
-from src.kline.aggregator import KlineAggregator
-from src.kline.models import TickRecord
+from kline import KlineAggregator, TickRecord
 
 
 def test_aggregator_builds_1m_bars() -> None:
@@ -48,8 +47,8 @@ def test_aggregator_builds_1m_bars() -> None:
     assert first_bar.close_price == 11.0
     assert first_bar.volume == 150.0
     assert first_bar.amount == 1550.0
-    assert first_bar.start_time == "09:30:00"
-    assert first_bar.end_time == "09:31:00"
+    assert first_bar.start_timestamp == 1668043800000
+    assert first_bar.end_timestamp == 1668043860000
 
     second_bar = bars[1]
     assert second_bar.open_price == 9.0
@@ -58,5 +57,5 @@ def test_aggregator_builds_1m_bars() -> None:
     assert second_bar.close_price == 9.0
     assert second_bar.volume == 30.0
     assert second_bar.amount == 270.0
-    assert second_bar.start_time == "09:31:00"
-    assert second_bar.end_time == "09:32:00"
+    assert second_bar.start_timestamp == 1668043860000
+    assert second_bar.end_timestamp == 1668043920000

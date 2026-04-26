@@ -1,14 +1,15 @@
 from itertools import islice
-from pathlib import Path
 
-from src.kline.reader import CSVReader
+from kline import CSVReader
 
 
 def test_csv_reader_reads_millionth_row_from_large_csv() -> None:
     reader = CSVReader()
-    file_path = Path("data/input/md_20221110.csv")
-
-    millionth_row = next(islice(reader.read(file_path), 999999, None))
+    millionth_row = next(
+        islice(
+            reader.read("data/sample_input/md_20221110_head_1000000.csv"), 999999, None
+        )
+    )
 
     assert millionth_row.symbol == "000581.SZ"
     assert millionth_row.trading_day == "20221110"

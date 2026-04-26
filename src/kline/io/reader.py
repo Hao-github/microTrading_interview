@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from typing import Iterator
 
-from .models import TickRecord
+from ..core.models import TickRecord
 
 
 class CSVReader:

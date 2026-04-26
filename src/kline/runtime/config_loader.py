@@ -1,28 +1,24 @@
 from configparser import ConfigParser
 from pathlib import Path
 
-from .models import TaskConfig
+from ..core.models import TaskConfig
 
 
 class ConfigLoader:
-    def __init__(self, config_path: str | Path | None = "config.ini") -> None:
-        """Store the config file path and initialize the parser."""
-        if config_path is None:
-            self.config_path = Path("config.ini")
-        else:
-            self.config_path = Path(config_path)
+    def __init__(self) -> None:
+        """Initialize the parser used for loading task config files."""
         self.parser = ConfigParser()
 
-    def load(self) -> TaskConfig:
+    def load(self, config_path: str | Path = "config.ini") -> TaskConfig:
         """Load config values and override the default TaskConfig fields."""
         self.parser.clear()
-        self.parser.read(self.config_path, encoding="utf-8")
+        self.parser.read(Path(config_path), encoding="utf-8")
 
         config = TaskConfig()
 
         if self.parser.has_section("paths"):
             paths = self.parser["paths"]
-            for field_name in ("input_dir", "output_dir", "log_dir", "checkpoint_dir"):
+            for field_name in ("output_dir", "log_dir", "checkpoint_dir"):
                 if paths.get(field_name):
                     setattr(config, field_name, Path(paths[field_name]))
 

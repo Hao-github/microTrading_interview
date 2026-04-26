@@ -1,6 +1,5 @@
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Iterable
 
 from .models import KlineBar, TickRecord
@@ -67,8 +66,9 @@ class KlineAggregator:
             for interval, interval_state in interval_states.items()
         }
 
-    def _bucket_start(self, timestamp: int, interval_ms: int) -> int:
-        return timestamp - (timestamp % interval_ms)
+    def _bucket_range(self, timestamp: int, interval_ms: int) -> tuple[int, int]:
+        start = timestamp - (timestamp % interval_ms)
+        return start, start + interval_ms
 
     def _process_row_for_interval(
         self,
@@ -80,8 +80,9 @@ class KlineAggregator:
             interval_state.symbol_states[row.symbol] = state
         self._update_watermark(row, state)
 
-        bucket_start = self._bucket_start(row.timestamp, interval_state.interval_ms)
-        bucket_end = bucket_start + interval_state.interval_ms
+        bucket_start, bucket_end = self._bucket_range(
+            row.timestamp, interval_state.interval_ms
+        )
         if bucket_end <= state.flushed_until:
             self.logger.warning(
                 f"Drop late tick for flushed bucket: "
@@ -93,18 +94,16 @@ class KlineAggregator:
             return
 
         if (bar := state.active_bars.get(bucket_start)) is None:
-            state.active_bars[bucket_start] = self._new_bar(
+            state.active_bars[bucket_start] = KlineBar.from_tick(
                 row=row,
                 interval=interval_state.interval,
-                bucket_start=bucket_start,
-                bucket_end=bucket_end,
+                start_timestamp=bucket_start,
+                end_timestamp=bucket_end,
             )
         else:
             bar.update_from_tick(row)
 
-        interval_state.aggregated_bars.extend(
-            self._flush_ready_bars(state, interval_state)
-        )
+        interval_state.aggregated_bars.extend(self._flush_ready_bars(state))
 
     def _update_watermark(
         self,
@@ -121,24 +120,18 @@ class KlineAggregator:
             )
         state.watermark = max(previous_watermark, row.timestamp)
 
-    def _flush_ready_bars(
-        self,
-        state: SymbolAggregationState,
-        interval_state: IntervalAggregationState,
-    ) -> list[KlineBar]:
+    def _flush_ready_bars(self, state: SymbolAggregationState) -> list[KlineBar]:
         flush_before = state.watermark - self.max_lateness_ms
         flushable_starts = [
             start
-            for start in state.active_bars
-            if start + interval_state.interval_ms <= flush_before
+            for start, bar in state.active_bars.items()
+            if bar.end_timestamp <= flush_before
         ]
 
         flushed_bars: list[KlineBar] = []
         for start in sorted(flushable_starts):
             bar_to_flush = state.active_bars.pop(start)
-            state.flushed_until = max(
-                state.flushed_until, start + interval_state.interval_ms
-            )
+            state.flushed_until = max(state.flushed_until, bar_to_flush.end_timestamp)
             flushed_bars.append(bar_to_flush)
         return flushed_bars
 
@@ -151,27 +144,3 @@ class KlineAggregator:
             for start in sorted(state.active_bars):
                 remaining_bars.append(state.active_bars[start])
         return remaining_bars
-
-    def _new_bar(
-        self,
-        row: TickRecord,
-        interval: str,
-        bucket_start: int,
-        bucket_end: int,
-    ) -> KlineBar:
-        return KlineBar(
-            symbol=row.symbol,
-            interval=interval,
-            trading_day=row.trading_day,
-            open_price=row.price,
-            high_price=row.price,
-            low_price=row.price,
-            close_price=row.price,
-            volume=float(row.volume),
-            amount=float(row.turnover),
-            start_time=self._format_timestamp(bucket_start),
-            end_time=self._format_timestamp(bucket_end),
-        )
-
-    def _format_timestamp(self, timestamp: int) -> str:
-        return datetime.fromtimestamp(timestamp / 1000).strftime("%H:%M:%S")

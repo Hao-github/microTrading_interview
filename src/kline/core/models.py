@@ -25,8 +25,7 @@ class TickRecord:
         turnover: str,
         recv_index: str,
     ) -> "TickRecord":
-        time_value = time_value.zfill(9)
-        dt = datetime.strptime(f"{trading_day}{time_value}", "%Y%m%d%H%M%S%f")
+        dt = datetime.strptime(f"{trading_day}{time_value.zfill(9)}", "%Y%m%d%H%M%S%f")
         return cls(
             symbol=symbol,
             trading_day=trading_day,
@@ -49,8 +48,31 @@ class KlineBar:
     close_price: float = 0.0
     volume: float = 0.0
     amount: float = 0.0
-    start_time: str = ""
-    end_time: str = ""
+    start_timestamp: int = 0
+    end_timestamp: int = 0
+
+    @classmethod
+    def from_tick(
+        cls,
+        *,
+        row: TickRecord,
+        interval: str,
+        start_timestamp: int,
+        end_timestamp: int,
+    ) -> "KlineBar":
+        return cls(
+            symbol=row.symbol,
+            interval=interval,
+            trading_day=row.trading_day,
+            open_price=row.price,
+            high_price=row.price,
+            low_price=row.price,
+            close_price=row.price,
+            volume=float(row.volume),
+            amount=float(row.turnover),
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp,
+        )
 
     def update_from_tick(self, row: TickRecord) -> None:
         self.high_price = max(self.high_price, row.price)
@@ -62,7 +84,6 @@ class KlineBar:
 
 @dataclass
 class TaskConfig:
-    input_dir: Path = Path("data/input")
     output_dir: Path = Path("data/output")
     log_dir: Path = Path("logs")
     checkpoint_dir: Path = Path("checkpoints")

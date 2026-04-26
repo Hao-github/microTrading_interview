@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Iterable
 
-from .models import KlineBar
+from ..core.models import KlineBar
 
 
 class KlineWriter:
