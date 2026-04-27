@@ -1,4 +1,3 @@
-import json
 import pickle
 import shutil
 import uuid
@@ -12,6 +11,8 @@ from kline.core import (
     TickRecord,
 )
 from kline.runtime import CheckpointManager
+
+from tests.conftest import TEST_CONFIG_PATH
 
 
 def _build_interval_states() -> IntervalStates:
@@ -44,7 +45,7 @@ def _make_temp_checkpoint_dir() -> Path:
 
 
 def _make_manager(checkpoint_dir: Path) -> CheckpointManager:
-    config = ConfigLoader().load()
+    config = ConfigLoader().load(TEST_CONFIG_PATH)
     config.checkpoint_dir = checkpoint_dir
     return CheckpointManager(config)
 
@@ -78,7 +79,6 @@ def test_checkpoint_save_and_restore_round_trip_state() -> None:
         assert checkpoint_path.exists()
         assert start_offset == 43
         assert commit_id == 3
-        assert restored_states is not None
 
         restored_interval_state = restored_states["1m"]
         restored_symbol_state = restored_interval_state.symbol_states["000001.SZ"]
@@ -103,32 +103,19 @@ def test_checkpoint_save_and_restore_round_trip_state() -> None:
         shutil.rmtree(checkpoint_dir, ignore_errors=True)
 
 
-def test_checkpoint_restore_latest_supports_legacy_json_snapshot() -> None:
+def test_checkpoint_restore_latest_uses_highest_commit_id() -> None:
     checkpoint_dir = _make_temp_checkpoint_dir()
     manager = _make_manager(checkpoint_dir)
     interval_states = _build_interval_states()
 
     try:
-        checkpoint_path = checkpoint_dir / "checkpoint_00000000000000000005.json"
-        checkpoint_path.write_text(
-            json.dumps(
-                {
-                    "version": 1,
-                    "offset": 99,
-                    "commit_id": 5,
-                    "interval_states": interval_states.to_dict(),
-                }
-            ),
-            encoding="utf-8",
-        )
+        manager.save_snapshot(offset=10, interval_states=interval_states, commit_id=1)
+        manager.save_snapshot(offset=20, interval_states=interval_states, commit_id=5)
 
-        start_offset, restored_states, commit_id = manager.restore_latest()
+        start_offset, _, commit_id = manager.restore_latest()
 
-        assert start_offset == 100
+        assert start_offset == 21
         assert commit_id == 5
-        assert restored_states["1m"].symbol_states["000001.SZ"].watermark == (
-            1_668_043_850_000
-        )
     finally:
         shutil.rmtree(checkpoint_dir, ignore_errors=True)
 

@@ -2,8 +2,9 @@ import shutil
 import uuid
 from pathlib import Path
 
-from kline import AggregationRunner, CheckpointManager, CSVReader, KlineWriter
-from kline.core.models import TaskConfig
+from kline import AggregationRunner, CheckpointManager, ConfigLoader, CSVReader, KlineWriter
+
+from tests.conftest import TEST_CONFIG_PATH
 
 
 def _make_temp_root() -> Path:
@@ -14,16 +15,12 @@ def _make_temp_root() -> Path:
     return root
 
 
-def _make_config(root: Path, checkpoint_interval: int = 10) -> TaskConfig:
-    config = TaskConfig(
-        input_file_path=Path("tests/sample_ticks_100.csv"),
-        output_dir=root / "out",
-        log_dir=root / "logs",
-        checkpoint_dir=root / "ckpt",
-        intervals=["1m"],
-        output_format="csv",
-        checkpoint_interval=checkpoint_interval,
-    )
+def _make_config(root: Path, checkpoint_interval: int = 10):
+    config = ConfigLoader().load(TEST_CONFIG_PATH)
+    config.output_dir = root / "out"
+    config.log_dir = root / "logs"
+    config.checkpoint_dir = root / "ckpt"
+    config.checkpoint_interval = checkpoint_interval
     config.output_dir.mkdir(parents=True, exist_ok=True)
     config.log_dir.mkdir(parents=True, exist_ok=True)
     config.checkpoint_dir.mkdir(parents=True, exist_ok=True)

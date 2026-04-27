@@ -232,19 +232,20 @@ class IntervalStates:
     def values(self):
         return self.by_interval.values()
 
-    def create(self, interval: str):
-        """Ensure that aggregation state exists for the given interval.
+    def create_from_intervals(self, intervals: list[str]):
+        """Ensure that aggregation state exists for each given interval.
 
         Args:
-            interval: Interval string such as ``"1m"``.
+            intervals: Interval list such as ``["1m", "5m"]``.
 
         Returns:
             ``None``.
         """
-        if interval not in self.by_interval:
-            self.by_interval[interval] = IntervalAggregationState.from_interval(
-                interval
-            )
+        for interval in intervals:
+            if interval not in self.by_interval:
+                self.by_interval[interval] = IntervalAggregationState.from_interval(
+                    interval
+                )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize all interval states into a plain dictionary.

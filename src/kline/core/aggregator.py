@@ -16,41 +16,37 @@ class KlineAggregator:
         max_lateness_ms: int = 30_000,
         initial_states: IntervalStates | None = None,
     ) -> None:
-        self.config = config
+        self.intervals = config.intervals
         self.max_lateness_ms = max_lateness_ms
         self.interval_states = initial_states or IntervalStates()
+        self.interval_states.create_from_intervals(self.intervals)
+        self._symbol_watermarks = self._build_symbol_watermarks(self.interval_states)
         self.logger = get_logger("kline.aggregator", config.log_dir)
 
     def aggregate(
-        self,
-        rows: Iterable[TickRecord],
-        intervals: str | list[str],
-        finalize: bool = True,
+        self, rows: Iterable[TickRecord], finalize: bool = True
     ) -> Iterator[tuple[str, KlineBar]]:
         """Aggregate tick rows into K-line bars for one or more intervals.
 
         Args:
             rows: Tick record iterable to be consumed in input order.
-            intervals: Single interval or interval list such as ``"1m"``.
             finalize: Whether to flush all remaining bars after input is exhausted.
 
         Yields:
             Tuples of ``(interval, bar)`` for each completed or finalized K-line bar.
         """
-        if isinstance(intervals, str):
-            intervals = [intervals]
 
-        for interval in intervals:
-            self.interval_states.create(interval)
-
+        intervals = self.intervals
         for row in rows:
+            self._log_out_of_order_tick_once(row)
             for interval in intervals:
                 yield from self._process_row_for_interval(
                     row=row, interval_state=self.interval_states[interval]
                 )
 
         if finalize:
-            for interval_state in self.interval_states.values():
+            for interval in self.intervals:
+                interval_state = self.interval_states[interval]
                 for bar in interval_state.flush_remaining_bars():
                     yield interval_state.interval, bar
 
@@ -79,14 +75,7 @@ class KlineAggregator:
             state = SymbolAggregationState(watermark=timestamp)
             symbol_states[symbol] = state
 
-        previous_watermark, is_out_of_order = state.update_watermark(timestamp)
-        if is_out_of_order:
-            self.logger.warning(
-                f"Out-of-order tick for {symbol}: "
-                f"recv_index={recv_index}, "
-                f"timestamp={timestamp}, "
-                f"watermark={previous_watermark}"
-            )
+        state.update_watermark(timestamp)
 
         bucket_start = timestamp - (timestamp % interval_ms)
         timestamp_bucket = (bucket_start, bucket_start + interval_ms)
@@ -104,3 +93,44 @@ class KlineAggregator:
 
         for bar in state.flush_ready_bars(self.max_lateness_ms):
             yield interval, bar
+
+    def _log_out_of_order_tick_once(self, row: TickRecord) -> None:
+        """Log out-of-order ticks once per input row instead of once per interval.
+
+        Args:
+            row: Tick record currently being aggregated.
+
+        Returns:
+            ``None``.
+        """
+        symbol = row.symbol
+        timestamp = row.timestamp
+        recv_index = row.recv_index
+        previous_watermark = self._symbol_watermarks.get(symbol, timestamp)
+
+        if timestamp < previous_watermark:
+            self.logger.warning(
+                f"Out-of-order tick for {symbol}: "
+                f"recv_index={recv_index}, "
+                f"timestamp={timestamp}, "
+                f"watermark={previous_watermark}"
+            )
+
+        self._symbol_watermarks[symbol] = max(previous_watermark, timestamp)
+
+    @staticmethod
+    def _build_symbol_watermarks(interval_states: IntervalStates) -> dict[str, int]:
+        """Extract the latest known watermark per symbol from interval states.
+
+        Args:
+            interval_states: Existing interval aggregation states.
+
+        Returns:
+            A mapping from symbol to its latest known watermark.
+        """
+        symbol_watermarks: dict[str, int] = {}
+        for interval_state in interval_states.values():
+            for symbol, state in interval_state.symbol_states.items():
+                current_watermark = symbol_watermarks.get(symbol, state.watermark)
+                symbol_watermarks[symbol] = max(current_watermark, state.watermark)
+        return symbol_watermarks

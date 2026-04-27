@@ -1,14 +1,14 @@
-from kline import CSVReader, KlineAggregator, KlineBar, ConfigLoader
+from kline import CSVReader, ConfigLoader, KlineAggregator, KlineBar
 
-SAMPLE_CSV_PATH = "tests/sample_ticks_100.csv"
+from tests.conftest import SAMPLE_CSV_PATH, TEST_CONFIG_PATH
 
 
 def _aggregate_1m_bars() -> dict[tuple[str, int], KlineBar]:
-    config = ConfigLoader().load()
+    config = ConfigLoader().load(TEST_CONFIG_PATH)
     reader = CSVReader(config)
     aggregator = KlineAggregator(max_lateness_ms=30_000, config=config)
     rows = reader.read(SAMPLE_CSV_PATH)
-    bars = aggregator.aggregate(rows, "1m")
+    bars = aggregator.aggregate(rows)
     return {(bar.symbol, bar.bucket_start_timestamp): bar for _, bar in bars}
 
 
@@ -48,3 +48,15 @@ def test_aggregator_tolerates_small_out_of_order_ticks_within_same_bar() -> None
     assert bar.low_price == 102.0
     assert bar.volume == 230.0
     assert bar.amount == 23720.0
+
+
+def test_aggregator_finalize_only_emits_configured_intervals() -> None:
+    config = ConfigLoader().load(TEST_CONFIG_PATH)
+    aggregator = KlineAggregator(config=config)
+    aggregator.interval_states.create_from_intervals(["5m"])
+
+    rows = CSVReader(config).read(SAMPLE_CSV_PATH)
+    bars = list(aggregator.aggregate(rows))
+
+    assert bars
+    assert {interval for interval, _ in bars} == {"1m"}

@@ -67,9 +67,7 @@ class AggregationRunner:
                                 len(written_paths),
                             )
 
-                for interval, bar in self.aggregator.aggregate(
-                    rows_with_checkpoints(), self.config.intervals
-                ):
+                for interval, bar in self.aggregator.aggregate(rows_with_checkpoints()):
                     self.writer.segment_state_for(interval).write_bar(bar)
 
             if self.writer.has_open_segment():
