@@ -56,6 +56,14 @@ class CSVReader:
         self._active_rows: Generator[TickRecord, None, None] | None = None
 
     def close(self) -> None:
+        """Close the currently active row generator if one exists.
+
+        Args:
+            None.
+
+        Returns:
+            ``None``.
+        """
         if self._active_rows is None:
             return
 
@@ -65,6 +73,15 @@ class CSVReader:
     def _get_column_indexes(
         self, header: list[str], file_path: Path
     ) -> CSVColumnIndexes:
+        """Resolve required CSV column positions from the header row.
+
+        Args:
+            header: CSV header row.
+            file_path: Source CSV path used for error reporting.
+
+        Returns:
+            A ``CSVColumnIndexes`` instance with resolved positions.
+        """
         index_map = {name: idx for idx, name in enumerate(header)}
         required_columns = list(CSVColumnIndexes.COLUMN_NAMES.values())
         missing_columns = [
@@ -93,6 +110,19 @@ class CSVReader:
         column_indexes: CSVColumnIndexes,
         start_offset: int | None,
     ) -> TickRecord | None:
+        """Parse one CSV row into a tick record.
+
+        Args:
+            row: Raw CSV row values.
+            row_number: One-based line number in the source file.
+            file_path: Source CSV path used for logging.
+            column_indexes: Resolved index mapping for required columns.
+            start_offset: Optional minimum ``recv_index`` to include.
+
+        Returns:
+            A ``TickRecord`` when parsing succeeds and passes the offset filter;
+            otherwise ``None``.
+        """
         try:
             symbol = row[column_indexes.symbol].strip()
             trading_day = row[column_indexes.trading_day].strip()
@@ -121,7 +151,15 @@ class CSVReader:
     def read(
         self, file_path: str | Path, start_offset: int | None = None
     ) -> CSVTickStream:
-        """Yield tick records from a CSV file."""
+        """Open a CSV file and stream parsed tick records.
+
+        Args:
+            file_path: CSV file path to read.
+            start_offset: Optional minimum ``recv_index`` to include.
+
+        Returns:
+            A ``CSVTickStream`` context manager / iterable of ``TickRecord`` objects.
+        """
         self.close()
         file_path = Path(file_path)
 

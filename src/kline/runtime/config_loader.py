@@ -13,6 +13,14 @@ class ConfigLoader:
         self.parser = ConfigParser()
 
     def load(self, config_path: str | Path = "config.ini") -> TaskConfig:
+        """Load task configuration from an INI file.
+
+        Args:
+            config_path: Path to the configuration file.
+
+        Returns:
+            A validated ``TaskConfig`` instance.
+        """
         self.parser.clear()
 
         config_path = Path(config_path)
@@ -53,6 +61,14 @@ class ConfigLoader:
         return config
 
     def validate(self, config: TaskConfig) -> None:
+        """Validate config values and ensure required directories exist.
+
+        Args:
+            config: Task configuration to validate.
+
+        Returns:
+            ``None``.
+        """
         if not config.input_file_path.exists():
             raise FileNotFoundError(f"Input file not found: {config.input_file_path}")
 

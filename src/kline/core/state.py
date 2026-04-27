@@ -13,11 +13,27 @@ class SymbolAggregationState:
     flushed_until: int = -1
 
     def update_watermark(self, timestamp: int) -> tuple[int, bool]:
+        """Advance the symbol watermark with a new tick timestamp.
+
+        Args:
+            timestamp: Tick timestamp in milliseconds.
+
+        Returns:
+            A tuple of ``(previous_watermark, is_out_of_order)``.
+        """
         previous_watermark = self.watermark
         self.watermark = max(previous_watermark, timestamp)
         return previous_watermark, timestamp < previous_watermark
 
     def should_drop_late_tick(self, timestamp_bucket: tuple[int, int]) -> bool:
+        """Check whether a tick belongs to an already flushed bucket.
+
+        Args:
+            timestamp_bucket: Bucket range as ``(start_timestamp, end_timestamp)``.
+
+        Returns:
+            ``True`` if the bucket has already been flushed; otherwise ``False``.
+        """
         return timestamp_bucket[1] <= self.flushed_until
 
     def upsert_bar(
@@ -26,6 +42,16 @@ class SymbolAggregationState:
         interval: str,
         timestamp_bucket: tuple[int, int],
     ) -> None:
+        """Create or update the active bar for the tick's time bucket.
+
+        Args:
+            row: Tick record to merge.
+            interval: Interval label such as ``"1m"``.
+            timestamp_bucket: Bucket range as ``(start_timestamp, end_timestamp)``.
+
+        Returns:
+            ``None``.
+        """
         bucket_start = timestamp_bucket[0]
         if (bar := self.active_bars.get(bucket_start)) is None:
             self.active_bars[bucket_start] = KlineBar.from_tick(
@@ -37,6 +63,14 @@ class SymbolAggregationState:
         bar.update_from_tick(row)
 
     def flush_ready_bars(self, max_lateness_ms: int) -> list[KlineBar]:
+        """Flush bars that are older than the allowed lateness window.
+
+        Args:
+            max_lateness_ms: Maximum tolerated out-of-order delay in milliseconds.
+
+        Returns:
+            A list of bars that are ready to be emitted.
+        """
         flush_before = self.watermark - max_lateness_ms
         flushed_bars: list[KlineBar] = []
         while self.active_bar_starts:
@@ -57,9 +91,25 @@ class SymbolAggregationState:
         return flushed_bars
 
     def flush_remaining_bars(self) -> list[KlineBar]:
+        """Return all remaining active bars without mutating ordering metadata.
+
+        Args:
+            None.
+
+        Returns:
+            Remaining active bars sorted by bucket start time.
+        """
         return [self.active_bars[start] for start in sorted(self.active_bars)]
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize the symbol state into a checkpoint-friendly dictionary.
+
+        Args:
+            None.
+
+        Returns:
+            A dictionary containing active bars and watermark metadata.
+        """
         return {
             "active_bars": [
                 self.active_bars[start].to_csv_row()
@@ -71,6 +121,14 @@ class SymbolAggregationState:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "SymbolAggregationState":
+        """Rebuild a symbol aggregation state from serialized payload data.
+
+        Args:
+            payload: Serialized symbol state dictionary.
+
+        Returns:
+            A restored ``SymbolAggregationState`` instance.
+        """
         active_bars = {
             int(bar_payload["bucket_start_timestamp"]): KlineBar.from_dict(bar_payload)
             for bar_payload in payload.get("active_bars", [])
@@ -91,11 +149,27 @@ class IntervalAggregationState:
 
     @classmethod
     def from_interval(cls, interval: str) -> "IntervalAggregationState":
+        """Create interval state from an interval label.
+
+        Args:
+            interval: Interval string such as ``"1m"``.
+
+        Returns:
+            An ``IntervalAggregationState`` with parsed interval length.
+        """
         if interval.endswith("m") and (minutes := int(interval[:-1])) > 0:
             return cls(interval=interval, interval_ms=minutes * 60 * 1000)
         raise ValueError(f"unsupported interval: {interval}")
 
     def flush_remaining_bars(self) -> list[KlineBar]:
+        """Collect all remaining bars across all symbols in this interval.
+
+        Args:
+            None.
+
+        Returns:
+            A list of unflushed bars for the interval.
+        """
         return [
             bar
             for symbol_state in self.symbol_states.values()
@@ -103,6 +177,14 @@ class IntervalAggregationState:
         ]
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize the interval state for checkpoint persistence.
+
+        Args:
+            None.
+
+        Returns:
+            A dictionary containing interval metadata and symbol states.
+        """
         return {
             "interval": self.interval,
             "interval_ms": self.interval_ms,
@@ -113,6 +195,14 @@ class IntervalAggregationState:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "IntervalAggregationState":
+        """Restore interval state from serialized payload data.
+
+        Args:
+            payload: Serialized interval state dictionary.
+
+        Returns:
+            A restored ``IntervalAggregationState`` instance.
+        """
         return cls(
             interval=str(payload["interval"]),
             interval_ms=int(payload["interval_ms"]),
@@ -143,18 +233,42 @@ class IntervalStates:
         return self.by_interval.values()
 
     def create(self, interval: str):
+        """Ensure that aggregation state exists for the given interval.
+
+        Args:
+            interval: Interval string such as ``"1m"``.
+
+        Returns:
+            ``None``.
+        """
         if interval not in self.by_interval:
             self.by_interval[interval] = IntervalAggregationState.from_interval(
                 interval
             )
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize all interval states into a plain dictionary.
+
+        Args:
+            None.
+
+        Returns:
+            A mapping from interval string to serialized interval state.
+        """
         return {
             interval: state.to_dict() for interval, state in self.by_interval.items()
         }
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any] | None) -> "IntervalStates":
+        """Restore interval states from serialized checkpoint data.
+
+        Args:
+            payload: Serialized interval-state mapping, or ``None``.
+
+        Returns:
+            A restored ``IntervalStates`` instance.
+        """
         if payload is None:
             return cls()
 

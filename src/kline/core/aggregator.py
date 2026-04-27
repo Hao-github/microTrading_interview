@@ -27,6 +27,16 @@ class KlineAggregator:
         intervals: str | list[str],
         finalize: bool = True,
     ) -> Iterator[tuple[str, KlineBar]]:
+        """Aggregate tick rows into K-line bars for one or more intervals.
+
+        Args:
+            rows: Tick record iterable to be consumed in input order.
+            intervals: Single interval or interval list such as ``"1m"``.
+            finalize: Whether to flush all remaining bars after input is exhausted.
+
+        Yields:
+            Tuples of ``(interval, bar)`` for each completed or finalized K-line bar.
+        """
         if isinstance(intervals, str):
             intervals = [intervals]
 
@@ -49,6 +59,15 @@ class KlineAggregator:
         row: TickRecord,
         interval_state: IntervalAggregationState,
     ) -> Iterator[tuple[str, KlineBar]]:
+        """Process one tick for a specific interval state.
+
+        Args:
+            row: Tick record to merge into the target interval.
+            interval_state: Aggregation state for the current interval.
+
+        Yields:
+            Tuples of ``(interval, bar)`` for bars that become flushable after this tick.
+        """
         symbol = row.symbol
         timestamp = row.timestamp
         recv_index = row.recv_index

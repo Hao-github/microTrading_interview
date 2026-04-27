@@ -15,6 +15,14 @@ class CheckpointManager:
     def restore_latest(
         self,
     ) -> tuple[int | None, IntervalStates, int]:
+        """Restore the latest checkpoint snapshot if one exists.
+
+        Args:
+            None.
+
+        Returns:
+            A tuple of ``(start_offset, interval_states, commit_id)``.
+        """
         if (checkpoint_path := self._latest_checkpoint_path()) is None:
             return None, IntervalStates(), 0
 
@@ -34,6 +42,16 @@ class CheckpointManager:
     def save_snapshot(
         self, offset: int, interval_states: IntervalStates, commit_id: int
     ) -> Path:
+        """Persist a checkpoint snapshot for the current aggregation progress.
+
+        Args:
+            offset: Last processed source offset.
+            interval_states: Current in-memory aggregation states.
+            commit_id: Commit identifier associated with written output segments.
+
+        Returns:
+            Path to the saved checkpoint file.
+        """
         checkpoint_path = (
             self.checkpoint_dir / f"{self.file_prefix}_{commit_id:020d}.pkl"
         )
@@ -52,6 +70,14 @@ class CheckpointManager:
         return checkpoint_path
 
     def clear_all(self) -> None:
+        """Delete all checkpoint files in the checkpoint directory.
+
+        Args:
+            None.
+
+        Returns:
+            ``None``.
+        """
         if not self.checkpoint_dir.exists():
             return
 

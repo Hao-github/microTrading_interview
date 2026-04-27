@@ -26,6 +26,14 @@ class AggregationRunner:
         )
 
     def run(self) -> None:
+        """Execute the full read-aggregate-write pipeline with checkpointing.
+
+        Args:
+            None.
+
+        Returns:
+            ``None``.
+        """
         self.writer.cleanup_outputs_after(self.commit_id)
         last_processed_offset: int | None = None
         processed_count = 0

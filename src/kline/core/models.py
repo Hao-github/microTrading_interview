@@ -9,6 +9,14 @@ _CHINA_TZ_OFFSET_SECONDS = 8 * 60 * 60
 
 @lru_cache(maxsize=32)
 def _trading_day_base_timestamp_ms(trading_day: str) -> int:
+    """Convert a trading day string into its local-midnight UTC timestamp.
+
+    Args:
+        trading_day: Trading day in ``YYYYMMDD`` format.
+
+    Returns:
+        Midnight timestamp in milliseconds for the trading day under China timezone.
+    """
     if len(trading_day) != 8 or not trading_day.isdigit():
         raise ValueError(f"invalid trading_day: {trading_day}")
 
@@ -24,6 +32,15 @@ def _trading_day_base_timestamp_ms(trading_day: str) -> int:
 
 
 def _parse_timestamp_ms(trading_day: str, time_value: str) -> int:
+    """Build a tick timestamp from trading day and intra-day time text.
+
+    Args:
+        trading_day: Trading day in ``YYYYMMDD`` format.
+        time_value: Time text in ``HHMMSSmmm`` format, allowing left padding.
+
+    Returns:
+        Tick timestamp in milliseconds.
+    """
     time_text = time_value.zfill(9)
     if len(time_text) != 9 or not time_text.isdigit():
         raise ValueError(f"invalid time_value: {time_value}")
@@ -59,6 +76,20 @@ class TickRecord:
         turnover: str,
         recv_index: int,
     ) -> "TickRecord":
+        """Create a tick record from raw CSV field strings.
+
+        Args:
+            symbol: Security symbol.
+            trading_day: Trading day in ``YYYYMMDD`` format.
+            time_value: Tick time text from the CSV row.
+            price: Price field text.
+            volume: Volume field text.
+            turnover: Turnover field text.
+            recv_index: Receive order index from the source file.
+
+        Returns:
+            A parsed ``TickRecord`` instance.
+        """
         return cls(
             symbol=symbol,
             trading_day=trading_day,
@@ -88,6 +119,14 @@ class KlineBar:
 
     @classmethod
     def csv_fieldnames(cls) -> list[str]:
+        """Return CSV column names for serialized K-line bars.
+
+        Args:
+            None.
+
+        Returns:
+            Field names in output CSV order.
+        """
         return [field.name for field in fields(cls)]
 
     @classmethod
@@ -97,6 +136,16 @@ class KlineBar:
         interval: str,
         timestamp_bucket: tuple[int, int],
     ) -> "KlineBar":
+        """Create a new K-line bar initialized from a single tick.
+
+        Args:
+            row: Source tick record.
+            interval: Interval label such as ``"1m"``.
+            timestamp_bucket: Bucket range as ``(start_timestamp, end_timestamp)``.
+
+        Returns:
+            A new ``KlineBar`` seeded from the tick.
+        """
         return cls(
             symbol=row.symbol,
             interval=interval,
@@ -114,6 +163,14 @@ class KlineBar:
         )
 
     def update_from_tick(self, row: TickRecord) -> None:
+        """Merge a tick into the current K-line bar.
+
+        Args:
+            row: Tick record belonging to the same bar bucket.
+
+        Returns:
+            ``None``.
+        """
         if row.timestamp < self.first_tick_timestamp:
             self.open_price = row.price
             self.first_tick_timestamp = row.timestamp
@@ -128,6 +185,14 @@ class KlineBar:
         self.amount += float(row.turnover)
 
     def to_csv_row(self) -> dict[str, str | int | float]:
+        """Convert the bar into a dictionary suitable for CSV or checkpoints.
+
+        Args:
+            None.
+
+        Returns:
+            A field-name to field-value mapping for the bar.
+        """
         return {
             "symbol": self.symbol,
             "interval": self.interval,
@@ -145,6 +210,14 @@ class KlineBar:
         }
 
     def to_csv_values(self) -> list[str | int | float]:
+        """Convert the bar into a positional CSV row.
+
+        Args:
+            None.
+
+        Returns:
+            Field values ordered to match ``csv_fieldnames()``.
+        """
         return [
             self.symbol,
             self.interval,
@@ -163,6 +236,14 @@ class KlineBar:
 
     @classmethod
     def from_dict(cls, payload: dict[str, str | int | float]) -> "KlineBar":
+        """Restore a bar from serialized dictionary data.
+
+        Args:
+            payload: Serialized bar dictionary.
+
+        Returns:
+            A restored ``KlineBar`` instance.
+        """
         return cls(
             symbol=str(payload["symbol"]),
             interval=str(payload["interval"]),
