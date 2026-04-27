@@ -17,16 +17,17 @@ class KlineWriter:
         self._segment_states = SegmentStates()
 
     def segment_state_for(self, interval: str) -> IntervalSegmentState:
+        if interval in self._segment_states:
+            return self._segment_states[interval]
+
         output_path = (
             self.output_dir
             / f"kline_{interval}_for_{self.original_file_name}_current.csv.tmp"
         )
-        state, created = self._segment_states.get_or_create(interval, output_path)
-        if created:
-            self.logger.info(
-                f"start writing tmp csv file for interval {interval}: {output_path}"
-            )
-        return state
+        self.logger.info(
+            f"start writing tmp csv file for interval {interval}: {output_path}"
+        )
+        return self._segment_states.create(interval, output_path)
 
     def commit_segment(self, commit_id: int, segment_kind: str = "batch") -> list[Path]:
         written_paths: list[Path] = []

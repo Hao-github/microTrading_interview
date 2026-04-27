@@ -1,5 +1,5 @@
 import csv
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Generator
 
@@ -9,20 +9,23 @@ from kline.runtime.logger import get_logger
 
 @dataclass(frozen=True, slots=True)
 class CSVColumnIndexes:
-    symbol: int = field(metadata={"csv_column": "szWindCode"})
-    trading_day: int = field(metadata={"csv_column": "nTradingDay"})
-    time_value: int = field(metadata={"csv_column": "nTime"})
-    price: int = field(metadata={"csv_column": "nMatch"})
-    volume: int = field(metadata={"csv_column": "iVolume"})
-    turnover: int = field(metadata={"csv_column": "iTurnover"})
-    recv_index: int = field(metadata={"csv_column": "recv_index"})
+    COLUMN_NAMES = {
+        "symbol": "szWindCode",
+        "trading_day": "nTradingDay",
+        "time_value": "nTime",
+        "price": "nMatch",
+        "volume": "iVolume",
+        "turnover": "iTurnover",
+        "recv_index": "recv_index",
+    }
 
-    @classmethod
-    def csv_columns(cls) -> dict[str, str]:
-        return {
-            dataclass_field.name: dataclass_field.metadata["csv_column"]
-            for dataclass_field in fields(cls)
-        }
+    symbol: int
+    trading_day: int
+    time_value: int
+    price: int
+    volume: int
+    turnover: int
+    recv_index: int
 
 
 class CSVTickStream:
@@ -63,8 +66,7 @@ class CSVReader:
         self, header: list[str], file_path: Path
     ) -> CSVColumnIndexes:
         index_map = {name: idx for idx, name in enumerate(header)}
-        csv_columns = CSVColumnIndexes.csv_columns()
-        required_columns = list(csv_columns.values())
+        required_columns = list(CSVColumnIndexes.COLUMN_NAMES.values())
         missing_columns = [
             column for column in required_columns if column not in index_map
         ]
@@ -79,7 +81,7 @@ class CSVReader:
         return CSVColumnIndexes(
             **{
                 field_name: index_map[csv_column]
-                for field_name, csv_column in csv_columns.items()
+                for field_name, csv_column in CSVColumnIndexes.COLUMN_NAMES.items()
             }
         )
 
@@ -92,18 +94,26 @@ class CSVReader:
         start_offset: int | None,
     ) -> TickRecord | None:
         try:
-            raw_fields = {
-                dataclass_field.name: row[
-                    getattr(column_indexes, dataclass_field.name)
-                ].strip()
-                for dataclass_field in fields(CSVColumnIndexes)
-            }
-            recv_index = int(raw_fields["recv_index"] or 0)
+            symbol = row[column_indexes.symbol].strip()
+            trading_day = row[column_indexes.trading_day].strip()
+            time_value = row[column_indexes.time_value].strip()
+            price = row[column_indexes.price].strip()
+            volume = row[column_indexes.volume].strip()
+            turnover = row[column_indexes.turnover].strip()
+            recv_index = int(row[column_indexes.recv_index].strip() or 0)
+
             if start_offset is not None and recv_index < start_offset:
                 return None
 
-            raw_fields["recv_index"] = recv_index
-            return TickRecord.from_csv_fields(**raw_fields)
+            return TickRecord.from_csv_fields(
+                symbol=symbol,
+                trading_day=trading_day,
+                time_value=time_value,
+                price=price,
+                volume=volume,
+                turnover=turnover,
+                recv_index=recv_index,
+            )
         except (IndexError, ValueError) as exc:
             self.logger.warning(f"skip invalid row {row_number} in {file_path}: {exc}")
             return None

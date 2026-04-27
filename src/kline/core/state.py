@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import heapq
 from typing import Any
 
 from kline.core.models import KlineBar, TickRecord
@@ -7,6 +8,7 @@ from kline.core.models import KlineBar, TickRecord
 @dataclass(slots=True)
 class SymbolAggregationState:
     active_bars: dict[int, KlineBar] = field(default_factory=dict)
+    active_bar_starts: list[int] = field(default_factory=list)
     watermark: int = 0
     flushed_until: int = -1
 
@@ -24,25 +26,30 @@ class SymbolAggregationState:
         interval: str,
         timestamp_bucket: tuple[int, int],
     ) -> None:
-        if (bar := self.active_bars.get(timestamp_bucket[0])) is None:
-            self.active_bars[timestamp_bucket[0]] = KlineBar.from_tick(
+        bucket_start = timestamp_bucket[0]
+        if (bar := self.active_bars.get(bucket_start)) is None:
+            self.active_bars[bucket_start] = KlineBar.from_tick(
                 row=row, interval=interval, timestamp_bucket=timestamp_bucket
             )
+            heapq.heappush(self.active_bar_starts, bucket_start)
             return
 
         bar.update_from_tick(row)
 
     def flush_ready_bars(self, max_lateness_ms: int) -> list[KlineBar]:
         flush_before = self.watermark - max_lateness_ms
-        flushable_starts = [
-            start
-            for start, bar in self.active_bars.items()
-            if bar.bucket_end_timestamp <= flush_before
-        ]
-
         flushed_bars: list[KlineBar] = []
-        for start in sorted(flushable_starts):
-            bar_to_flush = self.active_bars.pop(start)
+        while self.active_bar_starts:
+            start = self.active_bar_starts[0]
+            if (bar_to_flush := self.active_bars.get(start)) is None:
+                heapq.heappop(self.active_bar_starts)
+                continue
+
+            if bar_to_flush.bucket_end_timestamp > flush_before:
+                break
+
+            heapq.heappop(self.active_bar_starts)
+            self.active_bars.pop(start)
             self.flushed_until = max(
                 self.flushed_until, bar_to_flush.bucket_end_timestamp
             )
@@ -70,6 +77,7 @@ class SymbolAggregationState:
         }
         return cls(
             active_bars=active_bars,
+            active_bar_starts=sorted(active_bars),
             watermark=int(payload.get("watermark", 0)),
             flushed_until=int(payload.get("flushed_until", -1)),
         )
@@ -134,12 +142,11 @@ class IntervalStates:
     def values(self):
         return self.by_interval.values()
 
-    def get_or_create(self, interval: str) -> IntervalAggregationState:
+    def create(self, interval: str):
         if interval not in self.by_interval:
             self.by_interval[interval] = IntervalAggregationState.from_interval(
                 interval
             )
-        return self.by_interval[interval]
 
     def to_dict(self) -> dict[str, Any]:
         return {

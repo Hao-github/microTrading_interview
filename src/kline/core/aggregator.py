@@ -31,7 +31,7 @@ class KlineAggregator:
             intervals = [intervals]
 
         for interval in intervals:
-            self.interval_states.get_or_create(interval)
+            self.interval_states.create(interval)
 
         for row in rows:
             for interval in intervals:
@@ -44,42 +44,44 @@ class KlineAggregator:
                 for bar in interval_state.flush_remaining_bars():
                     yield interval_state.interval, bar
 
-    def _bucket_range(self, timestamp: int, interval_ms: int) -> tuple[int, int]:
-        start = timestamp - (timestamp % interval_ms)
-        return start, start + interval_ms
-
     def _process_row_for_interval(
         self,
         row: TickRecord,
         interval_state: IntervalAggregationState,
     ) -> Iterator[tuple[str, KlineBar]]:
-        if (state := interval_state.symbol_states.get(row.symbol)) is None:
-            state = SymbolAggregationState(watermark=row.timestamp)
-            interval_state.symbol_states[row.symbol] = state
+        symbol = row.symbol
+        timestamp = row.timestamp
+        recv_index = row.recv_index
+        interval = interval_state.interval
+        interval_ms = interval_state.interval_ms
+        symbol_states = interval_state.symbol_states
 
-        previous_watermark, is_out_of_order = state.update_watermark(row.timestamp)
+        if (state := symbol_states.get(symbol)) is None:
+            state = SymbolAggregationState(watermark=timestamp)
+            symbol_states[symbol] = state
+
+        previous_watermark, is_out_of_order = state.update_watermark(timestamp)
         if is_out_of_order:
             self.logger.warning(
-                f"Out-of-order tick for {row.symbol}: "
-                f"recv_index={row.recv_index}, "
-                f"timestamp={row.timestamp}, "
+                f"Out-of-order tick for {symbol}: "
+                f"recv_index={recv_index}, "
+                f"timestamp={timestamp}, "
                 f"watermark={previous_watermark}"
             )
 
-        timestamp_bucket = self._bucket_range(row.timestamp, interval_state.interval_ms)
+        bucket_start = timestamp - (timestamp % interval_ms)
+        timestamp_bucket = (bucket_start, bucket_start + interval_ms)
         if state.should_drop_late_tick(timestamp_bucket):
             self.logger.warning(
                 f"Drop late tick for flushed bucket: "
-                f"symbol={row.symbol}, "
-                f"recv_index={row.recv_index}, "
-                f"timestamp={row.timestamp}, "
-                f"interval={interval_state.interval}"
+                f"symbol={symbol}, "
+                f"recv_index={recv_index}, "
+                f"timestamp={timestamp}, "
+                f"interval={interval}"
             )
             return
 
-        state.upsert_bar(
-            row=row, interval=interval_state.interval, timestamp_bucket=timestamp_bucket
-        )
+        state.upsert_bar(row=row, interval=interval, timestamp_bucket=timestamp_bucket)
 
         for bar in state.flush_ready_bars(self.max_lateness_ms):
-            yield interval_state.interval, bar
+            yield interval, bar

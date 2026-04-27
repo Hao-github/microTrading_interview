@@ -51,17 +51,10 @@ class SegmentStates:
     def __setitem__(self, interval: str, state: IntervalSegmentState) -> None:
         self.by_interval[interval] = state
 
-    def get_or_create(
-        self,
-        interval: str,
-        output_path: Path,
-    ) -> tuple[IntervalSegmentState, bool]:
-        if interval in self.by_interval:
-            return self.by_interval[interval], False
-
+    def create(self, interval: str, output_path: Path) -> IntervalSegmentState:
         state = IntervalSegmentState.from_output_path(output_path)
         self.by_interval[interval] = state
-        return state, True
+        return state
 
     def values(self):
         return self.by_interval.values()

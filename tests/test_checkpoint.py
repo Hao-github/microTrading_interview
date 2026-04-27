@@ -1,4 +1,5 @@
 import json
+import pickle
 import shutil
 import uuid
 from pathlib import Path
@@ -73,7 +74,7 @@ def test_checkpoint_save_and_restore_round_trip_state() -> None:
         )
         start_offset, restored_states, commit_id = manager.restore_latest()
 
-        assert checkpoint_path.name == "checkpoint_00000000000000000003.json"
+        assert checkpoint_path.name == "checkpoint_00000000000000000003.pkl"
         assert checkpoint_path.exists()
         assert start_offset == 43
         assert commit_id == 3
@@ -92,10 +93,42 @@ def test_checkpoint_save_and_restore_round_trip_state() -> None:
         assert restored_bar.volume == 120.0
         assert restored_bar.amount == 1260.0
 
-        payload = json.loads(checkpoint_path.read_text(encoding="utf-8"))
-        assert payload["version"] == 1
+        with checkpoint_path.open("rb") as checkpoint_file:
+            payload = pickle.load(checkpoint_file)
+        assert payload["version"] == 2
         assert payload["offset"] == 42
         assert payload["commit_id"] == 3
+        assert isinstance(payload["interval_states"], IntervalStates)
+    finally:
+        shutil.rmtree(checkpoint_dir, ignore_errors=True)
+
+
+def test_checkpoint_restore_latest_supports_legacy_json_snapshot() -> None:
+    checkpoint_dir = _make_temp_checkpoint_dir()
+    manager = _make_manager(checkpoint_dir)
+    interval_states = _build_interval_states()
+
+    try:
+        checkpoint_path = checkpoint_dir / "checkpoint_00000000000000000005.json"
+        checkpoint_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "offset": 99,
+                    "commit_id": 5,
+                    "interval_states": interval_states.to_dict(),
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        start_offset, restored_states, commit_id = manager.restore_latest()
+
+        assert start_offset == 100
+        assert commit_id == 5
+        assert restored_states["1m"].symbol_states["000001.SZ"].watermark == (
+            1_668_043_850_000
+        )
     finally:
         shutil.rmtree(checkpoint_dir, ignore_errors=True)
 

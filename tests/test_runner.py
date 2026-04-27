@@ -46,7 +46,7 @@ def test_runner_generates_commit_id_named_segments_and_clears_checkpoints() -> N
 
         output_names = sorted(path.name for path in config.output_dir.glob("*.csv"))
         checkpoint_names = sorted(
-            path.name for path in config.checkpoint_dir.glob("*.json")
+            path.name for path in config.checkpoint_dir.glob("*.pkl")
         )
 
         assert output_names[0] == (

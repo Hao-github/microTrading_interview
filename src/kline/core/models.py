@@ -1,18 +1,16 @@
 from dataclasses import dataclass, field, fields
 from datetime import date
+from functools import lru_cache
 from pathlib import Path
 
 _EPOCH_ORDINAL = date(1970, 1, 1).toordinal()
 _CHINA_TZ_OFFSET_SECONDS = 8 * 60 * 60
 
 
-def _parse_timestamp_ms(trading_day: str, time_value: str) -> int:
+@lru_cache(maxsize=32)
+def _trading_day_base_timestamp_ms(trading_day: str) -> int:
     if len(trading_day) != 8 or not trading_day.isdigit():
         raise ValueError(f"invalid trading_day: {trading_day}")
-
-    time_text = time_value.zfill(9)
-    if len(time_text) != 9 or not time_text.isdigit():
-        raise ValueError(f"invalid time_value: {time_value}")
 
     epoch_day = (
         date(
@@ -22,15 +20,21 @@ def _parse_timestamp_ms(trading_day: str, time_value: str) -> int:
         ).toordinal()
         - _EPOCH_ORDINAL
     )
+    return (epoch_day * 24 * 60 * 60 - _CHINA_TZ_OFFSET_SECONDS) * 1000
 
-    total_seconds = (
-        epoch_day * 24 * 60 * 60
-        + int(time_text[0:2]) * 60 * 60
-        + int(time_text[2:4]) * 60
-        + int(time_text[4:6])
-        - _CHINA_TZ_OFFSET_SECONDS
+
+def _parse_timestamp_ms(trading_day: str, time_value: str) -> int:
+    time_text = time_value.zfill(9)
+    if len(time_text) != 9 or not time_text.isdigit():
+        raise ValueError(f"invalid time_value: {time_value}")
+
+    time_offset_ms = (
+        int(time_text[0:2]) * 60 * 60 * 1000
+        + int(time_text[2:4]) * 60 * 1000
+        + int(time_text[4:6]) * 1000
+        + int(time_text[6:9])
     )
-    return total_seconds * 1000 + int(time_text[6:9])
+    return _trading_day_base_timestamp_ms(trading_day) + time_offset_ms
 
 
 @dataclass(slots=True)
