@@ -1,3 +1,4 @@
+import os
 import pickle
 from pathlib import Path
 
@@ -55,18 +56,30 @@ class CheckpointManager:
         checkpoint_path = (
             self.checkpoint_dir / f"{self.file_prefix}_{commit_id:020d}.pkl"
         )
+        tmp_checkpoint_path = checkpoint_path.with_suffix(".pkl.tmp")
         checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-        with checkpoint_path.open("wb") as checkpoint_file:
-            pickle.dump(
-                {
-                    "version": 2,
-                    "offset": offset,
-                    "commit_id": commit_id,
-                    "interval_states": interval_states,
-                },
-                checkpoint_file,
-                protocol=self.PICKLE_PROTOCOL,
-            )
+        payload = {
+            "version": 2,
+            "offset": offset,
+            "commit_id": commit_id,
+            "interval_states": interval_states,
+        }
+
+        try:
+            with tmp_checkpoint_path.open("wb") as checkpoint_file:
+                pickle.dump(
+                    payload,
+                    checkpoint_file,
+                    protocol=self.PICKLE_PROTOCOL,
+                )
+                checkpoint_file.flush()
+                os.fsync(checkpoint_file.fileno())
+
+            tmp_checkpoint_path.replace(checkpoint_path)
+        finally:
+            if tmp_checkpoint_path.exists():
+                tmp_checkpoint_path.unlink()
+
         return checkpoint_path
 
     def clear_all(self) -> None:

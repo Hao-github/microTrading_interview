@@ -2,6 +2,8 @@ import shutil
 import uuid
 from pathlib import Path
 
+import pytest
+
 from kline import AggregationRunner, CheckpointManager, ConfigLoader, CSVReader, KlineWriter
 
 from tests.conftest import TEST_CONFIG_PATH
@@ -27,17 +29,41 @@ def _make_config(root: Path, checkpoint_interval: int = 10):
     return config
 
 
+def _build_runner(config, checkpoint_manager: CheckpointManager) -> AggregationRunner:
+    return AggregationRunner(
+        config=config,
+        reader=CSVReader(config),
+        writer=KlineWriter(config),
+        checkpoint_manager=checkpoint_manager,
+    )
+
+
+def _read_output_snapshots(output_dir: Path) -> dict[str, str]:
+    return {
+        path.name: path.read_text(encoding="utf-8")
+        for path in sorted(output_dir.glob("*.csv"))
+    }
+
+
+class CrashAfterFirstSnapshotCheckpointManager(CheckpointManager):
+    def __init__(self, config):
+        super().__init__(config)
+        self._has_crashed = False
+
+    def save_snapshot(self, offset, interval_states, commit_id):
+        checkpoint_path = super().save_snapshot(offset, interval_states, commit_id)
+        if not self._has_crashed:
+            self._has_crashed = True
+            raise RuntimeError("simulated crash after checkpoint save")
+        return checkpoint_path
+
+
 def test_runner_generates_commit_id_named_segments_and_clears_checkpoints() -> None:
     root = _make_temp_root()
     config = _make_config(root)
 
     try:
-        runner = AggregationRunner(
-            config=config,
-            reader=CSVReader(config),
-            writer=KlineWriter(config),
-            checkpoint_manager=CheckpointManager(config),
-        )
+        runner = _build_runner(config, CheckpointManager(config))
 
         runner.run()
 
@@ -86,3 +112,47 @@ def test_runner_cleanup_removes_future_segments_by_commit_id() -> None:
         assert not tmp_file.exists()
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def test_runner_recovers_from_crash_and_matches_clean_run_outputs() -> None:
+    crash_root = _make_temp_root()
+    clean_root = _make_temp_root()
+    crash_config = _make_config(crash_root)
+    clean_config = _make_config(clean_root)
+
+    try:
+        crashing_runner = _build_runner(
+            crash_config,
+            CrashAfterFirstSnapshotCheckpointManager(crash_config),
+        )
+        with pytest.raises(RuntimeError, match="simulated crash"):
+            crashing_runner.run()
+
+        checkpoint_names_after_crash = sorted(
+            path.name for path in crash_config.checkpoint_dir.glob("*.pkl")
+        )
+        assert checkpoint_names_after_crash == [
+            "checkpoint_00000000000000000001.pkl"
+        ]
+
+        recovered_runner = _build_runner(
+            crash_config,
+            CheckpointManager(crash_config),
+        )
+        recovered_runner.run()
+
+        clean_runner = _build_runner(
+            clean_config,
+            CheckpointManager(clean_config),
+        )
+        clean_runner.run()
+
+        recovered_outputs = _read_output_snapshots(crash_config.output_dir)
+        clean_outputs = _read_output_snapshots(clean_config.output_dir)
+
+        assert recovered_outputs == clean_outputs
+        assert not any(crash_config.checkpoint_dir.glob("*.pkl"))
+        assert not any(crash_config.output_dir.glob("*.tmp"))
+    finally:
+        shutil.rmtree(crash_root, ignore_errors=True)
+        shutil.rmtree(clean_root, ignore_errors=True)

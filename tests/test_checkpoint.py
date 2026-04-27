@@ -103,6 +103,22 @@ def test_checkpoint_save_and_restore_round_trip_state() -> None:
         shutil.rmtree(checkpoint_dir, ignore_errors=True)
 
 
+def test_checkpoint_save_snapshot_is_atomic_and_leaves_no_tmp_file() -> None:
+    checkpoint_dir = _make_temp_checkpoint_dir()
+    manager = _make_manager(checkpoint_dir)
+    interval_states = _build_interval_states()
+
+    try:
+        checkpoint_path = manager.save_snapshot(
+            offset=42, interval_states=interval_states, commit_id=3
+        )
+
+        assert checkpoint_path.exists()
+        assert not any(checkpoint_dir.glob("*.tmp"))
+    finally:
+        shutil.rmtree(checkpoint_dir, ignore_errors=True)
+
+
 def test_checkpoint_restore_latest_uses_highest_commit_id() -> None:
     checkpoint_dir = _make_temp_checkpoint_dir()
     manager = _make_manager(checkpoint_dir)
