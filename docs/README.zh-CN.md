@@ -32,7 +32,8 @@
 - `tests/`：单元测试与行为测试
 - `docs/`：设计说明
 - `data/input/`：输入数据目录
-- `data/output/`：输出数据目录
+- `data/output/`：完整输出目录
+- `data/output/segments/`：按 `commit_id` 提交的分段目录
 
 ## 配置说明
 
@@ -87,18 +88,26 @@ checkpoint_interval = 1000000
 
 ## 输出文件格式
 
-已提交的输出分段文件名示例：
+完整输出文件示例：
 
 ```text
-kline_1m_for_md_20221110_part_00000000000000000001_batch.csv
-kline_1m_for_md_20221110_part_00000000000000000011_final.csv
+kline_1m_for_md_20221110.csv
+```
+
+分段输出文件示例：
+
+```text
+segments/kline_1m_for_md_20221110_part_00000000000000000001_batch.csv
+segments/kline_1m_for_md_20221110_part_00000000000000000011_final.csv
 ```
 
 其中：
 
+- 根目录下的完整输出文件用于直接查看最终结果
 - `part_<id>` 表示提交序号
 - `batch` 表示中途提交的分段
 - `final` 表示最终提交的分段
+- `segments/` 下保留 exactly-once 恢复所需的提交痕迹
 
 ## 使用方式
 

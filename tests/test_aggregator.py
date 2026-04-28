@@ -1,4 +1,5 @@
 from kline import CSVReader, ConfigLoader, KlineAggregator, KlineBar
+from kline.core.state import IntervalAggregationState, SymbolAggregationState
 
 from tests.conftest import SAMPLE_CSV_PATH, TEST_CONFIG_PATH
 
@@ -60,3 +61,44 @@ def test_aggregator_finalize_only_emits_configured_intervals() -> None:
 
     assert bars
     assert {interval for interval, _ in bars} == {"1m"}
+
+
+def test_interval_flush_remaining_bars_returns_globally_sorted_bars() -> None:
+    interval_state = IntervalAggregationState.from_interval("1m")
+
+    later_tick = next(
+        iter(CSVReader(ConfigLoader().load(TEST_CONFIG_PATH)).read(SAMPLE_CSV_PATH))
+    )
+    earlier_tick = later_tick.__class__(
+        symbol="000002.SZ",
+        trading_day="20221110",
+        timestamp=1668043740000,
+        price=9.0,
+        volume=10,
+        turnover=90,
+        recv_index=1,
+    )
+
+    later_state = SymbolAggregationState()
+    later_state.upsert_bar(
+        row=later_tick,
+        interval="1m",
+        timestamp_bucket=(1668043800000, 1668043860000),
+    )
+    earlier_state = SymbolAggregationState()
+    earlier_state.upsert_bar(
+        row=earlier_tick,
+        interval="1m",
+        timestamp_bucket=(1668043740000, 1668043800000),
+    )
+
+    interval_state.symbol_states["000001.SZ"] = later_state
+    interval_state.symbol_states["000002.SZ"] = earlier_state
+
+    bars = interval_state.flush_remaining_bars()
+
+    assert [bar.symbol for bar in bars] == ["000002.SZ", "000001.SZ"]
+    assert [bar.bucket_start_timestamp for bar in bars] == [
+        1668043740000,
+        1668043800000,
+    ]

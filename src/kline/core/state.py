@@ -170,11 +170,20 @@ class IntervalAggregationState:
         Returns:
             A list of unflushed bars for the interval.
         """
-        return [
+        remaining_bars = [
             bar
             for symbol_state in self.symbol_states.values()
             for bar in symbol_state.flush_remaining_bars()
         ]
+        return sorted(
+            remaining_bars,
+            key=lambda bar: (
+                bar.bucket_start_timestamp,
+                bar.symbol,
+                bar.first_tick_timestamp,
+                bar.last_tick_timestamp,
+            ),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the interval state for checkpoint persistence.

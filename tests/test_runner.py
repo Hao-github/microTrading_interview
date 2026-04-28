@@ -68,14 +68,20 @@ def test_runner_generates_commit_id_named_segments_and_clears_checkpoints() -> N
         runner.run()
 
         output_names = sorted(path.name for path in config.output_dir.glob("*.csv"))
+        segment_names = sorted(
+            path.name for path in (config.output_dir / "segments").glob("*.csv")
+        )
         checkpoint_names = sorted(
             path.name for path in config.checkpoint_dir.glob("*.pkl")
         )
 
-        assert output_names[0] == (
+        assert output_names == [
+            "kline_1m_for_sample_ticks_100.csv"
+        ]
+        assert segment_names[0] == (
             "kline_1m_for_sample_ticks_100_part_00000000000000000001_batch.csv"
         )
-        assert output_names[-1] == (
+        assert segment_names[-1] == (
             "kline_1m_for_sample_ticks_100_part_00000000000000000011_final.csv"
         )
         assert checkpoint_names == []
@@ -87,22 +93,47 @@ def test_runner_cleanup_removes_future_segments_by_commit_id() -> None:
     root = _make_temp_root()
     config = _make_config(root)
     config.output_dir.mkdir(parents=True, exist_ok=True)
+    segment_dir = config.output_dir / "segments"
+    segment_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         kept = (
-            config.output_dir
+            segment_dir
             / "kline_1m_for_sample_ticks_100_part_00000000000000000001_batch.csv"
         )
         removed = (
-            config.output_dir
+            segment_dir
             / "kline_1m_for_sample_ticks_100_part_00000000000000000002_batch.csv"
         )
-        tmp_file = (
-            config.output_dir / "kline_1m_for_sample_ticks_100_current.csv.tmp"
+        tmp_file = segment_dir / "kline_1m_for_sample_ticks_100_current.csv.tmp"
+        header = ",".join(
+            [
+                "symbol",
+                "interval",
+                "trading_day",
+                "open_price",
+                "high_price",
+                "low_price",
+                "close_price",
+                "volume",
+                "amount",
+                "bucket_start_timestamp",
+                "bucket_end_timestamp",
+                "first_tick_timestamp",
+                "last_tick_timestamp",
+            ]
         )
-        kept.write_text("kept", encoding="utf-8")
-        removed.write_text("removed", encoding="utf-8")
+        kept.write_text(
+            header + "\n000001.SZ,1m,20221110,10,10,10,10,1,10,1,2,1,1\n",
+            encoding="utf-8",
+        )
+        removed.write_text(
+            header + "\n000002.SZ,1m,20221110,20,20,20,20,2,40,3,4,3,3\n",
+            encoding="utf-8",
+        )
         tmp_file.write_text("tmp", encoding="utf-8")
+        final_output = config.output_dir / "kline_1m_for_sample_ticks_100.csv"
+        final_output.write_text("stale", encoding="utf-8")
 
         writer = KlineWriter(config)
         writer.cleanup_outputs_after(commit_id=1)
@@ -110,6 +141,7 @@ def test_runner_cleanup_removes_future_segments_by_commit_id() -> None:
         assert kept.exists()
         assert not removed.exists()
         assert not tmp_file.exists()
+        assert final_output.exists()
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -152,7 +184,7 @@ def test_runner_recovers_from_crash_and_matches_clean_run_outputs() -> None:
 
         assert recovered_outputs == clean_outputs
         assert not any(crash_config.checkpoint_dir.glob("*.pkl"))
-        assert not any(crash_config.output_dir.glob("*.tmp"))
+        assert not any(crash_config.output_dir.rglob("*.tmp"))
     finally:
         shutil.rmtree(crash_root, ignore_errors=True)
         shutil.rmtree(clean_root, ignore_errors=True)

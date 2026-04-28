@@ -164,7 +164,7 @@ class CSVReader:
         file_path = Path(file_path)
 
         def _iter_rows() -> Generator[TickRecord, None, None]:
-            self.logger.info("start reading csv file: %s", file_path)
+            self.logger.info(f"start reading csv file: {file_path}")
             row_count = 0
 
             try:

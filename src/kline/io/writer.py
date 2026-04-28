@@ -1,8 +1,8 @@
 from pathlib import Path
 import re
 
-from kline.core.models import TaskConfig
-from kline.io.writer_state import IntervalSegmentState, SegmentStates
+from kline.core.models import KlineBar, TaskConfig
+from kline.io.writer_state import SegmentStates
 from kline.runtime.logger import get_logger
 
 
@@ -13,29 +13,30 @@ class KlineWriter:
         self.config = config
         self.logger = get_logger("kline.writer", config.log_dir)
         self.output_dir = Path(self.config.output_dir)
+        self.segment_dir = self.output_dir / "segments"
+        self.segment_dir.mkdir(parents=True, exist_ok=True)
         self.original_file_name = Path(self.config.input_file_path).stem
         self._segment_states = SegmentStates()
 
-    def segment_state_for(self, interval: str) -> IntervalSegmentState:
-        """Get or create the active output segment for an interval.
+    def write_bar(self, interval: str, bar: KlineBar) -> None:
+        """Write one bar into the active output segment for an interval.
 
         Args:
             interval: Interval label such as ``"1m"``.
+            bar: K-line bar to append.
 
         Returns:
-            The writable ``IntervalSegmentState`` for that interval.
+            ``None``.
         """
         if interval in self._segment_states:
-            return self._segment_states[interval]
+            self._segment_states[interval].write_bar(bar)
+            return
 
-        output_path = (
-            self.output_dir
-            / f"kline_{interval}_for_{self.original_file_name}_current.csv.tmp"
-        )
+        output_path = self.segment_dir / self._segment_tmp_file_name(interval)
         self.logger.info(
             f"start writing tmp csv file for interval {interval}: {output_path}"
         )
-        return self._segment_states.create(interval, output_path)
+        self._segment_states.create(interval, output_path).write_bar(bar)
 
     def commit_segment(self, commit_id: int, segment_kind: str = "batch") -> list[Path]:
         """Finalize all open segment files and rename them to committed outputs.
@@ -50,16 +51,13 @@ class KlineWriter:
         written_paths: list[Path] = []
 
         for interval, interval_state in list(self._segment_states.items()):
-            committed_path = self.output_dir / (
-                f"kline_{interval}_for_{self.original_file_name}"
-                f"_part_{commit_id:020d}_{segment_kind}.csv"
+            committed_path = self.segment_dir / self._segment_output_file_name(
+                interval, commit_id, segment_kind
             )
             written_paths.append(interval_state.commit_to(committed_path))
             self.logger.info(
-                "committed csv file for interval %s: %s, rows=%s",
-                interval,
-                committed_path,
-                interval_state.row_count,
+                f"committed csv file for interval {interval}: "
+                f"{committed_path}, rows={interval_state.row_count}"
             )
 
         self._segment_states.clear()
@@ -98,14 +96,65 @@ class KlineWriter:
         Returns:
             ``None``.
         """
-        for tmp_path in self.output_dir.glob(
-            f"kline_*_for_{self.original_file_name}_current.csv.tmp"
-        ):
+        if not self.segment_dir.exists():
+            return
+        for tmp_path in self.segment_dir.glob(self._segment_tmp_file_name("*")):
             tmp_path.unlink()
 
-        for output_path in self.output_dir.glob(
-            f"kline_*_for_{self.original_file_name}_part_*_*.csv"
+        for output_path in self.segment_dir.glob(
+            self._segment_output_file_name("*", "*", "*")
         ):
             match = self._COMMIT_PATTERN.search(output_path.name)
             if match and int(match.group(1)) > commit_id:
                 output_path.unlink()
+
+    def build_complete_outputs(self) -> None:
+        if not self.segment_dir.exists():
+            return
+
+        for interval in self.config.intervals:
+            segment_paths = sorted(
+                self.segment_dir.glob(
+                    self._segment_output_file_name(interval, "*", "*")
+                )
+            )
+            if not segment_paths:
+                continue
+
+            output_path = self.output_dir / f"{self._base_output_name(interval)}.csv"
+            tmp_output_path = (
+                self.output_dir / f"{self._base_output_name(interval)}.csv.tmp"
+            )
+
+            with tmp_output_path.open("w", encoding="utf-8", newline="") as output_file:
+                output_file.write(",".join(KlineBar.csv_fieldnames()) + "\n")
+
+                for segment_path in segment_paths:
+                    with segment_path.open(
+                        "r", encoding="utf-8", newline=""
+                    ) as segment_file:
+                        next(segment_file, None)
+                        for line in segment_file:
+                            output_file.write(line)
+
+            tmp_output_path.replace(output_path)
+            self.logger.info(
+                f"built merged csv file for interval {interval} "
+                f"from {len(segment_paths)} segments"
+            )
+
+    def _base_output_name(self, interval: str) -> str:
+        return f"kline_{interval}_for_{self.original_file_name}"
+
+    def _segment_tmp_file_name(self, interval: str) -> str:
+        return f"{self._base_output_name(interval)}_current.csv.tmp"
+
+    def _segment_output_file_name(
+        self, interval: str, commit_id: int | str, segment_kind: str
+    ) -> str:
+        commit_text = (
+            f"{commit_id:020d}" if isinstance(commit_id, int) else str(commit_id)
+        )
+        return (
+            f"{self._base_output_name(interval)}_part_{commit_text}_{segment_kind}.csv"
+        )

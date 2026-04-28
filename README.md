@@ -21,7 +21,7 @@ python main.py
 - Multi-interval aggregation such as `1m`, `5m`, `10m`, `30m`
 - Watermark-based out-of-order tolerance and delayed flush
 - Checkpoint persistence and resumable execution
-- Commit-id-based output segment files
+- Commit-id-based output segments plus merged final files
 - CI-friendly tests based on `tests/sample_ticks_100.csv`
 
 ## Documentation

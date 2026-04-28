@@ -34,7 +34,8 @@ clear module boundaries:
 - `tests/`: unit and behavior tests
 - `docs/`: design notes
 - `data/input/`: input data directory
-- `data/output/`: generated outputs directory
+- `data/output/`: merged final outputs
+- `data/output/segments/`: committed checkpoint segments
 
 ## Configuration
 
@@ -93,18 +94,26 @@ valid checkpoint file, the final visible outputs are effectively exactly-once.
 
 ## Output Layout
 
+Merged final output files look like:
+
+```text
+kline_1m_for_md_20221110.csv
+```
+
 Committed segment files look like:
 
 ```text
-kline_1m_for_md_20221110_part_00000000000000000001_batch.csv
-kline_1m_for_md_20221110_part_00000000000000000011_final.csv
+segments/kline_1m_for_md_20221110_part_00000000000000000001_batch.csv
+segments/kline_1m_for_md_20221110_part_00000000000000000011_final.csv
 ```
 
 Where:
 
+- root-level merged files are the reviewer-facing complete outputs
 - `part_<id>` is the commit sequence
 - `batch` means an intermediate committed segment
 - `final` means the last committed segment
+- `segments/` keeps the checkpoint-visible commit history used for recovery
 
 ## Usage
 

@@ -61,18 +61,18 @@ class AggregationRunner:
                                 commit_id=self.commit_id,
                             )
                             self.logger.info(
-                                "committed checkpoint commit_id=%s, offset=%s, segment_files=%s",
-                                self.commit_id,
-                                row.recv_index,
-                                len(written_paths),
+                                f"committed checkpoint commit_id={self.commit_id}, "
+                                f"offset={row.recv_index}, "
+                                f"segment_files={len(written_paths)}"
                             )
 
                 for interval, bar in self.aggregator.aggregate(rows_with_checkpoints()):
-                    self.writer.segment_state_for(interval).write_bar(bar)
+                    self.writer.write_bar(interval, bar)
 
             if self.writer.has_open_segment():
                 self.commit_id += 1
                 self.writer.commit_segment(self.commit_id, segment_kind="final")
+            self.writer.build_complete_outputs()
             self.checkpoint_manager.clear_all()
         except Exception:
             self.writer.discard_open_segment()
