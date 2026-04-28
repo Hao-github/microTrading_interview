@@ -45,6 +45,10 @@ def test_writer_commit_segment_writes_csv_with_header() -> None:
         assert rows[0] == KlineBar.csv_fieldnames()
         assert rows[1][0] == "000001.SZ"
         assert rows[1][1] == "1m"
+        assert "first_tick_timestamp" not in rows[0]
+        assert "last_tick_timestamp" not in rows[0]
+        assert "bucket_start_time" in rows[0]
+        assert "bucket_end_time" in rows[0]
     finally:
         remove_temp_dir(temp_dir)
 
@@ -99,5 +103,7 @@ def test_writer_build_complete_outputs_merges_segments() -> None:
         assert rows[0] == KlineBar.csv_fieldnames()
         assert rows[1][0] == "000001.SZ"
         assert rows[2][0] == "000002.SZ"
+        assert rows[1][-2] == "09:30:00.000"
+        assert rows[1][-1] == "09:31:00.000"
     finally:
         remove_temp_dir(temp_dir)

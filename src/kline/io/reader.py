@@ -135,7 +135,7 @@ class CSVReader:
             if start_offset is not None and recv_index < start_offset:
                 return None
 
-            return TickRecord.from_csv_fields(
+            record = TickRecord.from_csv_fields(
                 symbol=symbol,
                 trading_day=trading_day,
                 time_value=time_value,
@@ -144,6 +144,13 @@ class CSVReader:
                 turnover=turnover,
                 recv_index=recv_index,
             )
+            if record.price <= 0:
+                self.logger.debug(
+                    f"skip non-positive price row {row_number} in {file_path}: "
+                    f"price={record.price}"
+                )
+                return None
+            return record
         except (IndexError, ValueError) as exc:
             self.logger.warning(f"skip invalid row {row_number} in {file_path}: {exc}")
             return None

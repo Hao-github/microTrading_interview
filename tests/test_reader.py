@@ -53,3 +53,26 @@ def test_csv_reader_skips_invalid_rows() -> None:
         assert rows[1].price == 11.0
     finally:
         remove_temp_dir(temp_dir)
+
+
+def test_csv_reader_skips_non_positive_price_rows() -> None:
+    temp_dir = make_temp_dir("reader-tests")
+    try:
+        invalid_csv = temp_dir / "zero_price_ticks.csv"
+        invalid_csv.write_text(
+            "szWindCode,nTradingDay,nTime,nMatch,iVolume,iTurnover,recv_index\n"
+            "000001.SZ,20221110,093001000,10,100,1000,0\n"
+            "000001.SZ,20221110,093002000,0,100,0,1\n"
+            "000001.SZ,20221110,093003000,-1,100,-100,2\n"
+            "000001.SZ,20221110,093004000,11,50,550,3\n",
+            encoding="utf-8",
+        )
+
+        config = ConfigLoader().load(TEST_CONFIG_PATH)
+        reader = CSVReader(config=config)
+        rows = list(reader.read(invalid_csv))
+
+        assert [row.recv_index for row in rows] == [0, 3]
+        assert [row.price for row in rows] == [10.0, 11.0]
+    finally:
+        remove_temp_dir(temp_dir)

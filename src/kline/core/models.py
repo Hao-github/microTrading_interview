@@ -1,10 +1,11 @@
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
 _EPOCH_ORDINAL = date(1970, 1, 1).toordinal()
 _CHINA_TZ_OFFSET_SECONDS = 8 * 60 * 60
+_MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000
 
 
 @lru_cache(maxsize=32)
@@ -52,6 +53,17 @@ def _parse_timestamp_ms(trading_day: str, time_value: str) -> int:
         + int(time_text[6:9])
     )
     return _trading_day_base_timestamp_ms(trading_day) + time_offset_ms
+
+
+def _format_time_text(timestamp_ms: int) -> str:
+    local_ms = timestamp_ms + _CHINA_TZ_OFFSET_SECONDS * 1000
+    time_of_day_ms = local_ms % _MILLISECONDS_PER_DAY
+
+    hours = time_of_day_ms // (60 * 60 * 1000)
+    minutes = (time_of_day_ms // (60 * 1000)) % 60
+    seconds = (time_of_day_ms // 1000) % 60
+    milliseconds = time_of_day_ms % 1000
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
 
 
 @dataclass(slots=True)
@@ -127,7 +139,21 @@ class KlineBar:
         Returns:
             Field names in output CSV order.
         """
-        return [field.name for field in fields(cls)]
+        return [
+            "symbol",
+            "interval",
+            "trading_day",
+            "open_price",
+            "high_price",
+            "low_price",
+            "close_price",
+            "volume",
+            "amount",
+            "bucket_start_timestamp",
+            "bucket_end_timestamp",
+            "bucket_start_time",
+            "bucket_end_time",
+        ]
 
     @classmethod
     def from_tick(
@@ -184,8 +210,8 @@ class KlineBar:
         self.volume += float(row.volume)
         self.amount += float(row.turnover)
 
-    def to_csv_row(self) -> dict[str, str | int | float]:
-        """Convert the bar into a dictionary suitable for CSV or checkpoints.
+    def to_checkpoint_dict(self) -> dict[str, str | int | float]:
+        """Convert the bar into a dictionary suitable for checkpoints.
 
         Args:
             None.
@@ -230,8 +256,8 @@ class KlineBar:
             self.amount,
             self.bucket_start_timestamp,
             self.bucket_end_timestamp,
-            self.first_tick_timestamp,
-            self.last_tick_timestamp,
+            _format_time_text(self.bucket_start_timestamp),
+            _format_time_text(self.bucket_end_timestamp),
         ]
 
     @classmethod

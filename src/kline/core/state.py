@@ -112,7 +112,7 @@ class SymbolAggregationState:
         """
         return {
             "active_bars": [
-                self.active_bars[start].to_csv_row()
+                self.active_bars[start].to_checkpoint_dict()
                 for start in sorted(self.active_bars)
             ],
             "watermark": self.watermark,
