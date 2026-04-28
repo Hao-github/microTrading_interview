@@ -12,11 +12,13 @@ class ConfigLoader:
         """Initialize the parser used for loading task config files."""
         self.parser = ConfigParser()
 
-    def load(self, config_path: str | Path = "config.ini") -> TaskConfig:
+    def load(self, config_path: str | Path = "config.ini", **overrides) -> TaskConfig:
         """Load task configuration from an INI file.
 
         Args:
             config_path: Path to the configuration file.
+            validate: Whether to validate the loaded config before returning.
+            **overrides: Optional config field overrides applied after file load.
 
         Returns:
             A validated ``TaskConfig`` instance.
@@ -57,8 +59,38 @@ class ConfigLoader:
                     runtime["checkpoint_interval"]
                 )
 
+        self._apply_overrides(config, overrides)
+
         self.validate(config)
         return config
+
+    def _apply_overrides(self, config: TaskConfig, overrides: dict) -> None:
+        for field_name in (
+            "input_file_path",
+            "output_dir",
+            "log_dir",
+            "checkpoint_dir",
+        ):
+            if (value := overrides.get(field_name)) is not None:
+                setattr(config, field_name, Path(value))
+
+        if (intervals := overrides.get("intervals")) is not None:
+            if isinstance(intervals, str):
+                config.intervals = [
+                    item.strip() for item in intervals.split(",") if item.strip()
+                ]
+            else:
+                config.intervals = [
+                    str(item).strip() for item in intervals if str(item).strip()
+                ]
+
+        if (output_format := overrides.get("output_format")) is not None:
+            config.output_format = str(output_format).strip().lower()
+
+        if (checkpoint_interval := overrides.get("checkpoint_interval")) is not None:
+            config.checkpoint_interval = self._parse_checkpoint_interval(
+                str(checkpoint_interval)
+            )
 
     def validate(self, config: TaskConfig) -> None:
         """Validate config values and ensure required directories exist.
